@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Dynamo/Client/Store/web/store.war/shared/js/pageLayout/widget.js</title>
+    
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    
+    <h1 class="page-title">Source: Dynamo/Client/Store/web/store.war/shared/js/pageLayout/widget.js</h1>
+    
+    
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source"><code>/**
+ * @fileoverview Defines the widgetViewModel that represents a piece of
+ * content &amp; functionality for the page.
+ *
+ */
+define(
+  //-------------------------------------------------------------------
+  // PACKAGE NAME
+  //-------------------------------------------------------------------
+  'pageLayout/widget',
+
+  //-------------------------------------------------------------------
+  // DEPENDENCIES
+  //-------------------------------------------------------------------
+  ['knockout', 'CCi18n', 'ccDate', 'ccNumber', 'ccLogger', 'pubsub', 'hasher', 'ccConstants', 'viewModels/messageHandler', 'jquery', 'navigation'],
+
+  //-------------------------------------------------------------------
+  // MODULE DEFINITION
+  //-------------------------------------------------------------------
+
+  function(ko, CCi18n, ccDate, ccNumber, logger, PubSub, hasher, CCConstants, MessageHandler, $, navigation) {
+
+    "use strict";
+
+    //-----------------------------------------------------------------
+    // Class definition &amp; member variables (the constructor)
+    //-----------------------------------------------------------------
+    /**
+      The WidgetViewModel is a view model representing a widget object. Each widget displays or
+      interacts with page data and fills a region. A WidgetViewModel may represent a widget definition, a default widget object
+      that can be instantiated &amp; loaded, or a widget instance, the instantiation of a widget with configuration and data.
+      @name WidgetViewModel
+      @param {string} basePath The url path to where widgets are stored.
+      @property {observable&lt;string>} id The id of the widget instance.
+      @property {observable&lt;string>} typeId The id refering to what type of widget definition this is.
+      @property {observable&lt;boolean>} initialized Whether or not this widget has been initialized. True means initialized.
+      @property {observable&lt;string>} basePath The url path to where widgets are stored.
+      @property {observable&lt;string>} rootPath The url path to the files specific to this widget.
+      @property {observable&lt;string>} imagePath The url path to where this widget's images are located.
+      @property {observable&lt;string>} templatePath The url path to where the widget's templates are located.
+      @property {observable&lt;string>} jsPath The url path to where the widget's javascript is located.
+      @property {observable&lt;string>} i18nresources The name of the i18n namespace for this widget, e.g. 'productlisting',
+      which would translate into a locale specific resource file, where the string properties would located, ie 'locales/en/ns.productlisting.json'
+      @property {observable&lt;Object>} resources The loaded resources for the current locale.
+      @property {observable&lt;string>} locale Widget locale.
+      @property {observable&lt;Object>} customTranslations Custom translations for the widget.
+      @property {observable&lt;string>} widgetId Widget ID.
+      @property {observable&lt;integer>} numberOnPage Number of instances of this widget on the page.
+      @property {observable&lt;boolean>} isPreview Widget preview mode?
+      @property {observable&lt;Object>} elements Element view models keyed by element name
+      @property {computedObservable&lt;boolean>} isShared Is the widget used on multiple pages?
+      @property {computedObservable&lt;boolean>} contextDataLoaded Is the context data loaded yet for this widget?
+      @property {Object[]} historyStack The list of browser URL history entries.
+      @class Represents a widget.
+     */
+    function WidgetViewModel(basePath) {
+      var self = this;
+      this.basePath = basePath;
+      // flag to tell us if this widget has completed initialization
+      this.initialized = ko.observable(false);
+      // Used to make sure we don't
+      // start processing actions
+      // until the widget is initialized
+      this.deferredInit = $.Deferred();
+
+      //the id of the widget instance
+      this.id = ko.observable();
+
+      //the id of the widget definition
+      this.typeId = ko.observable();
+
+      //Various paths derived from the basePath
+      //and widget typeId
+      this.rootPath = ko.observable();
+      this.imagePath = ko.observable();
+      this.templatePath = ko.observable();
+      this.jsPath = ko.observable();
+      this.i18nresources = ko.observable();
+      this.resources = ko.observable();
+      this.locale = ko.observable();
+      this.customTranslations = ko.observable();
+      this.widgetId = ko.observable();
+      this.numberOnPage = ko.observable();
+      this.isPreview = ko.observable();
+
+      this.elements = {};
+
+      this.isShared = ko.computed(function() {
+        var updatedIsShared;
+
+        if (this.numberOnPage &amp;&amp; this.numberOnPage() > 1) {
+          updatedIsShared = true;
+        }
+        else if (this.pageIds &amp;&amp; this.pageIds().length > 1) {
+          updatedIsShared = true;
+        }
+        else {
+          updatedIsShared = false;
+        }
+
+        return updatedIsShared;
+      }, this);
+
+      // Need to know when all the data for the widget has arrived.
+      this.contextDataLoaded = ko.observable(false);
+
+      /**
+       * Set up something that will wait for the page to load then tell our observable.
+       * @private
+       * @function WidgetViewModel#pageReady
+       */
+      this.pageReady = function() {
+        this.contextDataLoaded(true);
+        //CCSF-1027 - to hide the modal and the backdrop when the widget loaded
+        if (this.links &amp;&amp; navigation.isPathEqualTo(this.links().checkout.route)) {
+          $('#CC-headermodalpane').modal('hide');
+          $('body').removeClass('modal-open');
+          $('.modal-backdrop').remove();
+        }
+      };
+
+      $.Topic(PubSub.topicNames.PAGE_READY).subscribe(self.pageReady.bind(self));
+
+      this.historyStack = [];
+      this.prevHistoryLength = 0;
+      this.newHistoryLength = 0;
+
+      /**
+       * Update the history stack in session storage.
+       * @private
+       * @function WidgetViewModel#updateHistoryStackArray
+       * @param {Object} The new hash object.
+       */
+      this.updateHistoryStackArray = function(obj) {
+        var historyStackData;
+        if (history.length === 1) {
+          try{
+          window.sessionStorage.removeItem(CCConstants.SESSION_STORAGE_HISTORY_STACK);
+          } catch(pErr){}
+        }
+        try {
+          historyStackData = window.sessionStorage.getItem(CCConstants.SESSION_STORAGE_HISTORY_STACK);
+        }
+        catch(pError) {
+        }
+        if (historyStackData &amp;&amp; !self.historyStack.length) {
+          self.historyStack = JSON.parse(historyStackData);
+        }
+        self.prevHistoryLength = self.newHistoryLength;
+        self.newHistoryLength = history.length;
+        // In case of page refresh oldHash is undefined. So check the case if page is not refreshed. Update historyStack only if page is not refreshed.
+        if (obj.oldHash != undefined) {
+          if (self.links &amp;&amp; self.links().hasOwnProperty(404)) {
+            if (self.historyStack.length) {
+              var lastPage = self.historyStack[self.historyStack.length - 1];
+              if (obj.newHash === lastPage.oldHash &amp;&amp; obj.oldHash === lastPage.newHash &amp;&amp; self.prevHistoryLength === self.newHistoryLength) {
+                self.historyStack.pop();
+              }
+              else {
+                //check if the old and new hash is not already pushed in sessionStorage, because this function executes multiple times.
+                //Also check if we are not going out of order i.e the old hash to be inserted should match the new hash of last stack element.
+                if ((self.historyStack[self.historyStack.length - 1].oldHash != obj.oldHash || self.historyStack[self.historyStack.length - 1].newHash != obj.newHash)
+                    &amp;&amp; (self.historyStack[self.historyStack.length - 1].newHash == obj.oldHash)) {
+                  self.historyStack.push(obj);
+                }
+              }
+            }
+            else {
+              self.historyStack.push(obj);
+            }
+            try {
+              window.sessionStorage.setItem(CCConstants.SESSION_STORAGE_HISTORY_STACK, JSON.stringify(self.historyStack));
+            }
+            catch(pError) {
+            }
+          }
+        }
+      };
+
+      $.Topic(PubSub.topicNames.UPDATE_HASH_CHANGES).subscribe(self.updateHistoryStackArray);
+
+      function loadI18N(i18nresources) {
+        var customTranslations, elementResources;
+
+        if (self.localeResources) {
+          for (var bundleLocale in self.localeResources) {
+            var unwrappedBundle = ko.toJS(self.localeResources[bundleLocale]['resources']);
+
+            if (self.customTranslations()) {
+              // Add custom translations now, so they are available to CCi18n
+              // when parameter replacement is required.
+              customTranslations = ko.toJS(self.customTranslations());
+
+              // Only merge Text Snippet custom resources at this point
+              // Save element resources for later because i18n doesn't like their key format
+              elementResources = self.mergeTextSnippetResources(unwrappedBundle, customTranslations);
+            }
+
+            CCi18n.addResourceBundle(bundleLocale,
+              self.localeResources[bundleLocale]['namespace'](), {
+                'resources': unwrappedBundle
+              }
+            );
+
+            var objResources = CCi18n.t('ns.' + self.i18nresources() +
+              ':resources', {
+                returnObjectTrees: true
+              });
+
+            logger.debug("addedResourceBundle " + self.localeResources[bundleLocale]['namespace']());
+
+            // now can merge in the element resources
+            $.extend(objResources, elementResources);
+
+            self.resources(objResources);
+          }
+        }
+
+        // allow for case where widget has no default translations, but
+        // has been configured with elements that have custom translations
+        // Don't need to worry about phased merge in this case.
+        if (self.customTranslations() &amp;&amp; !self.resources()) {
+          customTranslations = ko.toJS(self.customTranslations());
+          self.resources(customTranslations);
+        }
+
+        if (self.resources() &amp;&amp; self.resourcesLoaded) {
+          self.resourcesLoaded(self);
+        }
+      }
+
+      /**
+       * Custom Translations include 2 distinct sets of resources
+       *   1) Custom values for the existing resource keys (i.e. Text Snippets)
+       *   2) Resource values for element instances, with custom key names
+       *
+       * NB: In future, group 1 may also include custom keys.
+       *
+       * Unfortunately, i18next doesn't play well with the element resource keys
+       * as they have a '.' in the key name, e.g. "text.100008"
+       *
+       * Therefore, this method only merges resources where the key does not
+       * contain a '.' character.
+       *
+       * All unmerged custom resources are returned in a single object.
+       *
+       * @param defaultTranslations object containing default resources
+       * @param customTranslations object containing all custom
+       * @returns object containing unmerged custom resources
+       */
+      this.mergeTextSnippetResources = function(defaultTranslations, customTranslations) {
+        var unmergedResources = {};
+
+        if(defaultTranslations
+            &amp;&amp; (typeof(defaultTranslations) ===  "object")
+            &amp;&amp; customTranslations
+            &amp;&amp; (typeof(customTranslations) ===  "object")) {
+
+          for(var resource in customTranslations) {
+            // make sure its not a prototype property
+            if(customTranslations.hasOwnProperty(resource)) {
+              if (resource.indexOf('.') ===  -1) {
+                // 'safe' key - merge the value
+                defaultTranslations[resource] = customTranslations[resource];
+              } else {
+                // 'unsafe' key - don't merge
+                unmergedResources[resource] = customTranslations[resource];
+              }
+            }
+          }
+        }
+
+        return unmergedResources;
+      };
+
+      this.localeSubscription = this.locale.subscribe(function(locale) {
+        var self = this;
+        CCi18n.setLocaleOnce(locale.replace("_", "-"), function() {
+          // unsubscribe from locale to reduce the number of events fired
+          self.localeSubscription.dispose();
+          self.deferUntilAllPropertiesSet(self, function() {
+            loadI18N(self.i18nresources());
+          });
+        });
+      }, this);
+
+      //When typeId is populated, set the paths
+      this.typeId.subscribe(function(type) {
+        this.rootPath(this.basePath + 'widget/' + type);
+        this.imagePath(this.rootPath() + '/images');
+        this.jsPath(this.rootPath() + '/js');
+        this.widgetId(type);
+      }, this);
+
+      /**
+       * This function maps the given widget relative path to an absolute path
+       * which can be used for making http requests.
+       * @function WidgetViewModel#absoluteUrl
+       * @param {string} relativeUrl The relative url to be translated.
+       */
+      this.absoluteUrl = function(relativeUrl) {
+        var result = relativeUrl;
+        if (this.assetMappings) {
+          result = this.assetMappings[relativeUrl];
+        }
+        return result;
+      };
+
+      /**
+       * This function maps the given widget relative path to an absolute path
+       * that may be passed to the template binding.
+       * which can be used for making http requests.
+       * @function WidgetViewModel#templateAbsoluteUrl
+       * @param {string} relativeUrl The relative url to be translated.
+       */
+      this.templateAbsoluteUrl = function(relativeUrl) {
+        var result = relativeUrl;
+        if (this.assetMappings) {
+          result = this.assetMappings[relativeUrl]();
+        }
+        return result;
+      };
+
+      /**
+       * This function maps any notification template to an absolute path
+       * that has to be passed in the template based notifications in order to
+       * render them in the notifications panel.
+       * @function WidgetViewModel#notificationTemplateUrl
+       * @param notificationName
+       */
+      this.notificationTemplateUrl = function(notificationName) {
+        var templatePath = "/templates/";
+        // Add the template name and suffix it with .template
+        templatePath += notificationName + ".template";
+        // Now return the absolute URL for use.
+        return this.absoluteUrl(templatePath)();
+      };
+
+      /**
+       * This function can be called with a set of previous locale name and
+       * current locale name to redirect the user to a locale based URL.
+       * @function WidgetViewModel#redirectToLocalizedURL
+       * @param {string} selectedLocaleName Selected locale name.
+       * @param {string} previousLocaleName Previous locale name.
+       */
+      this.redirectToLocalizedURL = function(selectedLocaleName, previousLocaleName) {
+        var url = navigation.getLocaleBasedUrl(selectedLocaleName);
+        window.location.assign(url);
+      };
+
+      /**
+       * This function should be used in cases where a string is set via the
+       * javascript, e.g. in the widget view model.
+       *
+       * NB: For strings loaded in templates, use the widgetLocaleText binding
+       *
+       * Handles translation tasks where the required resource string
+       * may already be in the resources array.
+       *
+       * @function WidgetViewModel#translate
+       * @param {string} key The name of the resource item
+       * @param {Object} options Options that will be passed through to CCi18n.t
+       * @param {boolean} checkCommon Whether or not the common resource bundle
+       * should be checked if not match for the key was found in the widget's
+       * own resource bundle. Defaults to true.
+       * @param {string} customKey Identifier Key for text that has been
+       * customized in Site Studio / Admin. If specified, this key will
+       * be used to check the custom translations, added to resources(),
+       * before using the normal, static key value
+       */
+      this.translate = function(key, options, checkCommon, customKey) {
+
+        var result = '', defaultValue = key, fullKey = '';
+
+        if (self.resources()) {
+          if (customKey &amp;&amp; self.resources()[customKey] != null &amp;&amp; self.resources()[customKey] != 'null') {
+            // For now take custom translation 'as is'
+            // i.e. no replacements / formatters
+            return self.resources()[customKey];
+          }
+
+          if (self.resources()[key]) {
+            result = self.resources()[key];
+            // presence of '__' could indicate replacements are required
+            // i.e. this could be a formatter string
+            if (result.indexOf('__') === -1) {
+              return result;
+            } 
+          }
+        }
+
+        if (options) {
+          if (options.defaultValue) {
+            defaultValue = options.defaultValue;
+            options.defaultValue = undefined;
+          }
+        } else {
+          options = {};
+        }
+
+        if (checkCommon === undefined) {
+          checkCommon = true;
+        }
+
+        result = ''; // reset after self.resources checks
+
+        if (self.i18nresources() &amp;&amp; self.i18nresources() !== '') {
+
+          fullKey = 'ns.' + self.i18nresources() + ':resources.' + key;
+
+          // defaultValue not passed in options, so the fullKey is returned
+          // if the value isn't found, because the translated string just might
+          // be the same as the defaultValue string supplied.
+          result = CCi18n.t(fullKey, options);
+        }
+
+        if (result === fullKey) { 
+          // No match in widget resources or they could both
+          // be empty string if no widget resources exist
+
+          if (checkCommon) {
+            // Restore the defaultValue
+            options.defaultValue = defaultValue;
+
+            // try the common resources
+            result = CCi18n.t('ns.common:resources.' + key,
+              options);
+          } else {
+            result = defaultValue;
+          }
+        }
+        return result;
+      };
+
+      return (this);
+    }
+
+    /**
+     * This function is invoked during widget initialization.
+     * It is called after all properties on the widget
+     * have been set for the given page context.
+     * Any deferred initialization can happen at this point.
+     * @function WidgetViewModel#allPropertiesSet
+     * @param {WidgetViewModel} widget The widget on which all properties have been set.
+     */
+    WidgetViewModel.prototype.allPropertiesSet = function(widget) {
+      logger.debug(widget.typeId() + ": all properties have been set.");
+      widget.deferredInit.resolveWith(widget);
+    };
+
+    /**
+     * Defers calling the given function until all widget properties are
+     * set.
+     * @function WidgetViewModel#deferUntilAllPropertiesSet
+     * @param {WidgetViewModel} widget The WidgetViewModel on which calls are to be deferred.
+     * @param {function} f The function to be called when all widget properties are set.
+     */
+    WidgetViewModel.prototype.deferUntilAllPropertiesSet = function(widget, f) {
+      widget.deferredInit.done(f);
+    };
+
+    /**
+     * Method to allow the widget to indicate if it needs re-initialised based on the most up to date data for it.
+     * @function WidgetViewModel#requiresRefresh
+     * @param {WidgetViewModel} pNewWidgetData The new widget data.
+     * @returns {boolean} true if the list of page IDs on the new widget data is a different length than the current list.
+     */
+    WidgetViewModel.prototype.requiresRefresh = function(pNewWidgetData) {
+
+      if (this.pageIds() &amp;&amp; pNewWidgetData.pageIds()) {
+        if (this.pageIds().length !== pNewWidgetData.pageIds().length) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    /**
+     * Checks if widget is active on the current page and so is about to be rendered.
+     * @function WidgetViewModel#isActiveOnPage
+     * @param {Object} pageData The page data.
+     * @returns {boolean} true if the current widget appear on the page specified.
+     */
+    WidgetViewModel.prototype.isActiveOnPage = function(pageData) {
+
+      if (this.global()) {
+        return true;
+      }
+
+      if (pageData &amp;&amp; this.pages().indexOf(pageData.pageId || 'home') != -1) {
+        return true;
+      }
+
+      // Adding a check against page ids, rather than name, to handle multiple pages of the same type
+      // This may ultimately replace the page name check above
+      if (pageData &amp;&amp; this.pageIds().indexOf(pageData.pageRepositoryId || 'homePage') != -1) {
+        return true;
+      }
+
+      return false;
+    };
+
+    /**
+     * This function is responsible for calling with "beforeAppear"
+     * function at the right time. That is it will invoke that function on the WidgetViewModel
+     * just before the widget is about to be rendered on a given page.
+     * @function WidgetViewModel#maybeFireBeforeAppear
+     * @param {Object} pageData The page data.
+     */
+    WidgetViewModel.prototype.maybeFireBeforeAppear = function(pageData) {
+      // Test if current pageid is in the set of all pages on which
+      // this widget is assigned
+      var widget = this;
+      if (this.isActiveOnPage(pageData)) {
+        if (!this.initialized()) {
+          // defer till we are initialized
+          var defer = $.Deferred();
+          defer.done(this.beforeAppear);
+          var subscription = this.initialized.subscribe(function(newValue) {
+            if (newValue) {
+              // ok, it's initialized. Continue with propagating the notification.
+              defer.resolveWith(widget, [pageData]);
+              subscription.dispose(); // don't do this again
+            }
+          });
+        } else {
+          this.beforeAppear(pageData);
+        }
+      }
+    };
+
+    /**
+     * Does this widget instance have the 'beforeAppear' function defined?
+     * @function WidgetViewModel#hasBeforeAppear
+     * @returns {boolean} true if the widget has the 'beforeAppear' function defined.
+     */
+    WidgetViewModel.prototype.hasBeforeAppear = function() {
+      var result = false;
+
+      if ('beforeAppear' in this &amp;&amp; typeof this.beforeAppear === 'function') {
+        result = true;
+      }
+
+      return result;
+    };
+
+    /**
+     * Useful to format dates directly in the JS files without calling the actual JS file.
+     * @function WidgetViewModel#ccDate
+     * @param {string} pDate The date to format.
+     * @param {string} pCustomInputFormat Date format, if it's a non ISO8601 format.
+     * @param {string} pCustomOutputFormat Custom output format, if one of the predefined formats does not meet requirements.
+     * @param {string} pFormatName one of CCDate.formats : time, short, medium, long, full, default.
+     * @see ccDate#formatDateAndTime
+     * @returns {string} The formatted date and time.
+     */
+    WidgetViewModel.prototype.ccDate = function(pDate, pCustomInputFormat, pCustomOutputFormat, pFormatName) {
+      return ccDate.formatDateAndTime(pDate, pCustomInputFormat, pCustomOutputFormat, pFormatName);
+    };
+
+    /**
+     * Useful to format numbers directly in the JS files without calling the actual JS file.
+     * @function WidgetViewModel#ccNumber
+     * @param {string|number} number The number to format.
+     * @see ccNumber#formatNumber
+     * @returns {string} The formatted number.
+     */
+    WidgetViewModel.prototype.ccNumber = function(number) {
+      return ccNumber.formatNumber(number);
+    };
+
+    /**
+     * Format a price value, using a specified number of fractional digits.
+     * @function WidgetViewModel#formatPrice
+     * @param {number} price The price to format.
+     * @param {number} fractionalDigits The number of fractional digits.
+     * @returns {string} The formatted price.
+     */
+    WidgetViewModel.prototype.formatPrice = function(price, fractionalDigits) {
+    	//var price = widget.cart().subTotal().toFixed(widget.site().selectedPriceListGroup().currency.fractionalDigits);
+    	price = price.toFixed(fractionalDigits);
+        var priceSplit = price.split(".");
+        var formattedPrice = ccNumber.formatNumber(priceSplit[0], true);
+        if (fractionalDigits === 0) {
+          //we do not need a decimal separator in the price	if there are no fractional digits
+          formattedPrice = formattedPrice.substring(0, formattedPrice.length-3);
+        } else {
+          //we need a decimal separator in the price as there are fractional digits
+          formattedPrice = formattedPrice.substring(0, formattedPrice.length-2);
+          formattedPrice = formattedPrice + priceSplit[1];
+        }
+        return formattedPrice;
+    };
+    WidgetViewModel.prototype.messageBox = MessageHandler.getInstance();
+
+    /**
+     * Called to do any validation that the widget may have.
+     * The Widget instance is expected to provide a method appropriately
+     * called validate() if it wants to be validated as part of a widget stack.
+     */
+    WidgetViewModel.prototype.checkForValidation = function() {
+
+      if (this.validate) {
+        return this.validate();
+      } else {
+        return true;
+      }
+    }
+
+    return WidgetViewModel;
+  }
+);
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Index</a></h2><h3>Modules</h3><ul><li><a href="module-ccKoErrorWrapper.html">ccKoErrorWrapper</a></li><li><a href="module-ccKoExtensions.html">ccKoExtensions</a></li></ul><h3>Classes</h3><ul><li><a href="Address.html">Address</a></li><li><a href="CartViewModel.html">CartViewModel</a></li><li><a href="DynamicProperty.html">DynamicProperty</a></li><li><a href="EventDispatcher.html">EventDispatcher</a></li><li><a href="GiftCardViewModel.html">GiftCardViewModel</a></li><li><a href="GiftProductListingViewModel.html">GiftProductListingViewModel</a></li><li><a href="ko.bindingHandlers.background.html">background</a></li><li><a href="ko.bindingHandlers.carouselSwipe.html">carouselSwipe</a></li><li><a href="ko.bindingHandlers.ccForm.html">ccForm</a></li><li><a href="ko.bindingHandlers.ccLink.html">ccLink</a></li><li><a href="ko.bindingHandlers.ccValidation.html">ccValidation</a></li><li><a href="ko.bindingHandlers.checkbox.html">checkbox</a></li><li><a href="ko.bindingHandlers.chosen.html">chosen</a></li><li><a href="ko.bindingHandlers.contextResourcesNamespace.html">contextResourcesNamespace</a></li><li><a href="ko.bindingHandlers.currency.html">currency</a></li><li><a href="ko.bindingHandlers.datepicker.html">datepicker</a></li><li><a href="ko.bindingHandlers.datepopover.html">datepopover</a></li><li><a href="ko.bindingHandlers.draggable.html">draggable</a></li><li><a href="ko.bindingHandlers.droppable.html">droppable</a></li><li><a href="ko.bindingHandlers.fade.html">fade</a></li><li><a href="ko.bindingHandlers.hover.html">hover</a></li><li><a href="ko.bindingHandlers.imageSource.html">imageSource</a></li><li><a href="ko.bindingHandlers.imageZoom.html">imageZoom</a></li><li><a href="ko.bindingHandlers.localeText.html">localeText</a></li><li><a href="ko.bindingHandlers.makeAccess.html">makeAccess</a></li><li><a href="ko.bindingHandlers.modal.html">modal</a></li><li><a href="ko.bindingHandlers.modalTabbingContraint.html">modalTabbingContraint</a></li><li><a href="ko.bindingHandlers.onRender.html">onRender</a></li><li><a href="ko.bindingHandlers.popeditor.html">popeditor</a></li><li><a href="ko.bindingHandlers.popover.html">popover</a></li><li><a href="ko.bindingHandlers.productImageSource.html">productImageSource</a></li><li><a href="ko.bindingHandlers.propertyEditor.html">propertyEditor</a></li><li><a href="ko.bindingHandlers.radio.html">radio</a></li><li><a href="ko.bindingHandlers.richTextEditor.html">richTextEditor</a></li><li><a href="ko.bindingHandlers.scrollAffix.html">scrollAffix</a></li><li><a href="ko.bindingHandlers.select2.html">select2</a></li><li><a href="ko.bindingHandlers.select2Tags.html">select2Tags</a></li><li><a href="ko.bindingHandlers.selectable.html">selectable</a></li><li><a href="ko.bindingHandlers.slickList.html">slickList</a></li><li><a href="ko.bindingHandlers.slide.html">slide</a></li><li><a href="ko.bindingHandlers.slider.html">slider</a></li><li><a href="ko.bindingHandlers.spectrum.html">spectrum</a></li><li><a href="ko.bindingHandlers.tagsInput.html">tagsInput</a></li><li><a href="ko.bindingHandlers.textCheck.html">textCheck</a></li><li><a href="ko.bindingHandlers.timepicker.html">timepicker</a></li><li><a href="ko.bindingHandlers.triggerMessage.html">triggerMessage</a></li><li><a href="ko.bindingHandlers.validatableTarget.html">validatableTarget</a></li><li><a href="ko.bindingHandlers.validatableValue.html">validatableValue</a></li><li><a href="ko.bindingHandlers.widgetLocaleText.html">widgetLocaleText</a></li><li><a href="koValidation.alphaNumeric.html">alphaNumeric</a></li><li><a href="koValidation.alphaNumericNoSpaces.html">alphaNumericNoSpaces</a></li><li><a href="koValidation.alphaNumericNoSpacesWithSeperators.html">alphaNumericNoSpacesWithSeperators</a></li><li><a href="koValidation.alphaNumericWithSeperators.html">alphaNumericWithSeperators</a></li><li><a href="koValidation.bool.html">bool</a></li><li><a href="koValidation.creditcard.html">creditcard</a></li><li><a href="koValidation.cvv.html">cvv</a></li><li><a href="koValidation.endmonth.html">endmonth</a></li><li><a href="koValidation.endyear.html">endyear</a></li><li><a href="koValidation.importFileName.html">importFileName</a></li><li><a href="koValidation.laterDate.html">laterDate</a></li><li><a href="koValidation.match.html">match</a></li><li><a href="koValidation.mediaZipFileName.html">mediaZipFileName</a></li><li><a href="koValidation.number.html">number</a></li><li><a href="koValidation.observablePattern.html">observablePattern</a></li><li><a href="koValidation.password.html">password</a></li><li><a href="koValidation.price.html">price</a></li><li><a href="koValidation.propertyIdAlreadyInUse.html">propertyIdAlreadyInUse</a></li><li><a href="koValidation.propertyNameAlreadyInUse.html">propertyNameAlreadyInUse</a></li><li><a href="koValidation.restrictSlashCharacters.html">restrictSlashCharacters</a></li><li><a href="koValidation.startmonth.html">startmonth</a></li><li><a href="koValidation.startyear.html">startyear</a></li><li><a href="koValidation.uniqueTrimmed.html">uniqueTrimmed</a></li><li><a href="koValidation.uniqueTrimmedCaseInsensitive.html">uniqueTrimmedCaseInsensitive</a></li><li><a href="koValidation.url.html">url</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.addTemplate.html">addTemplate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDate.html">ccDate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDateTime.html">ccDateTime</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccNumber.html">ccNumber</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.disabled.html">disabled</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.element.html">element</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.embeddedAssistance.html">embeddedAssistance</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.inTabFlow.html">inTabFlow</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.setContextVariable.html">setContextVariable</a></li><li><a href="NavStateViewModel.html">NavStateViewModel</a></li><li><a href="OrderHistoryViewModel.html">OrderHistoryViewModel</a></li><li><a href="OrderViewModel.html">OrderViewModel</a></li><li><a href="ParentOrganisation.html">ParentOrganisation</a></li><li><a href="ProductListingSearchViewModel.html">ProductListingSearchViewModel</a></li><li><a href="ProductListingViewModel.html">ProductListingViewModel</a></li><li><a href="ProductViewModel.html">ProductViewModel</a></li><li><a href="PubSub.topicNames.html">topicNames</a></li><li><a href="resetCVV.html">resetCVV</a></li><li><a href="resetPaymentDetails.html">resetPaymentDetails</a></li><li><a href="SearchRestClient.html">SearchRestClient</a></li><li><a href="UserViewModel.html">UserViewModel</a></li><li><a href="WidgetViewModel.html">WidgetViewModel</a></li><li><a href="WishlistContentViewModel.html">WishlistContentViewModel</a></li></ul><h3>Namespaces</h3><ul><li><a href="ko.bindingHandlers.html">bindingHandlers</a></li><li><a href="ko.extenders.html">extenders</a></li><li><a href="koValidation.html">koValidation</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CCEETagProcessor">CCEETagProcessor</a></li><li><a href="global.html#isValidDeterminewhetherornotthepaymentdetailsobjectisvalidbasedonthevalidityofitscomponentparts.Thiswillnotcauseerrormessagestobedisplayedforanyobservablevaluesthatareunchangedandhaveneverreceivedfocusontherelatedformfield(s).">isValid
+Determine whether or not the payment details object is valid
+based on the validity of its component parts. This will not
+cause error messages to be displayed for any observable values
+that are unchanged and have never received focus on the 
+related form field(s).</a></li><li><a href="global.html#validatePaymentDetailsForceallrelevantmemberobservablestoperformtheirvalidationnow&displaytheerrors(ifany)">validatePaymentDetails
+Force all relevant member observables to perform their
+validation now & display the errors (if any)</a></li></ul>
+</nav>
+
+<br clear="both">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0</a> on Mon Oct 10 2016 10:49:03 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

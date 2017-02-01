@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Dynamo/Client/Store/web/store.war/shared/js/ccLibs/xdomain-proxy.js</title>
+    
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    
+    <h1 class="page-title">Source: Dynamo/Client/Store/web/store.war/shared/js/ccLibs/xdomain-proxy.js</h1>
+    
+    
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source"><code>//----------------------------------------
+/**
+ * this library depends on jquery
+ */
+
+define(['jquery'], function($) {
+
+  "use strict";
+
+  //----------------------------------------
+  /**
+   * constructor
+   */
+  function XDomainProxy(pProfileType, pHttpPort, pHttpsPort) {
+    var self = this;
+    self.profileType = pProfileType;
+    self.httpPort = pHttpPort || "8080";
+    self.httpsPort = pHttpsPort || "8443";
+
+
+    self.parentURL = XDomainProxy.getCrossDomainURL(pProfileType,
+                                                    XDomainProxy.HTTP_PROTOCOL,
+                                                    self.httpPort,
+                                                    false);
+
+    // if the parent doc is https, then we don't need to post a message
+    if(document.referrer &amp;&amp;
+       XDomainProxy.urlProtocolOnly(document.referrer) != XDomainProxy.HTTPS_PROTOCOL) {
+      // post a message informing that we've loaded
+      if(window != null &amp;&amp; window.parent !=null) {
+        window.parent.postMessage(JSON.stringify({
+          id: XDomainProxy.IFRAME_INIT_COMPLETE_EVENT,
+          success: true,
+          payload: null
+        }), self.parentURL);
+      }
+    }
+  }
+
+  // constants
+  XDomainProxy.POST = "POST";
+  XDomainProxy.GET = "GET";
+  XDomainProxy.DELETE = "DELETE";
+  XDomainProxy.METHOD = "method";
+  XDomainProxy.URL = "url";
+  XDomainProxy.DATA = "data";
+  XDomainProxy.SUCCESS = "success";
+  XDomainProxy.FAILURE = "failure";
+  XDomainProxy.HEADERS = "headers";
+  XDomainProxy.CONTENT_TYPE = "Content-Type";
+  XDomainProxy.ACCEPT = "Accept";
+  XDomainProxy.TEXT_PLAIN = "text/plain";
+  XDomainProxy.APPLICATION_JSON = "application/json";
+  XDomainProxy.JSON = "json";
+  XDomainProxy.ETAG = "ETag";
+  XDomainProxy.ETAG_PROPERTY = "___etag___";
+
+  XDomainProxy.AMPERSAND = "&amp;";
+  XDomainProxy.EQUALS = "=";
+  XDomainProxy.DOUBLE_SLASH = "//";
+  XDomainProxy.SLASH = "/";
+  XDomainProxy.EMPTY_STRING = "";
+  XDomainProxy.PROTOCOL_SEP = "://";
+  XDomainProxy.COLON = ":";
+  XDomainProxy.QUESTION_MARK = "?";
+  XDomainProxy.SPACE = " ";
+  XDomainProxy.SEMICOLON = ";";
+  XDomainProxy.DASH = "-";
+  XDomainProxy.CURLY_BRACES = "{}";
+  XDomainProxy.PERIOD = ".";
+
+  XDomainProxy.OAUTH_ACCESS_TOKEN_PARAM = "access_token";
+
+  XDomainProxy.LOGIN_SERVICE_PATH = "/ccstoreui/v1/login/";
+  XDomainProxy.ADMIN_LOGIN_SERVICE_PATH = "/ccadminui/v1/login/";
+  XDomainProxy.AGENT_LOGIN_SERVICE_PATH = "/ccagentui/v1/login/";
+  XDomainProxy.HTTP_PROTOCOL = "http";
+  XDomainProxy.HTTPS_PROTOCOL = "https";
+  XDomainProxy.HTTPS_FRAME_PATH = "/https/https.html";
+  XDomainProxy.HTTPS_ADMIN_FRAME_PATH = "/https/httpsAdmin.html";
+
+  XDomainProxy.GRANT_TYPE_PARAM = "grant_type";
+  XDomainProxy.PASSWORD_GRANT_TYPE_VALUE = "password";
+  XDomainProxy.USERNAME_PARAM = "username";
+  XDomainProxy.PASSWORD_PARAM = "password";
+
+  XDomainProxy.AUTH_HEADER_NAME = "Authorization";
+  XDomainProxy.AUTH_HEADER_PREFIX = "Bearer ";
+  XDomainProxy.PROFILE_TYPE_HEADER_NAME = "X-CCProfileType";
+
+  XDomainProxy.IFRAME_INIT_COMPLETE_EVENT = "iframeInitComplete";
+
+  XDomainProxy.ASSET_LANGUAGE_HEADER_NAME = "X-CCAsset-Language";
+  XDomainProxy.PRICE_LIST_GROUP_ID = "X-CCPriceListGroup";
+  XDomainProxy.AGENT_CONTEXT = "X-CCAgentContext";
+
+  XDomainProxy.VIEWPORT_HEADER_NAME = "X-CCViewport";
+
+  //----------------------------------------
+  /**
+   * init function
+   */
+  XDomainProxy.prototype.init = function() {
+    var self = this;
+
+    // a map of method names to functions
+    self.targetMap = {
+      "login": function(pPayload, pSuccessFunc, pErrorFunc) {
+        self.loginRequest(pPayload.user, pPayload.password, pSuccessFunc, pErrorFunc);
+      },
+      "auth": function(pPayload, pSuccessFunc, pErrorFunc) {
+        self.request(pPayload.url, pPayload.data, pSuccessFunc, pErrorFunc,
+                     pPayload.method, pPayload.clientProps);
+      },
+      "noauth": function(pPayload, pSuccessFunc, pErrorFunc) {
+        self.request(pPayload.url, pPayload.data, pSuccessFunc, pErrorFunc,
+                     pPayload.method);
+      }
+    };
+
+    // create the event listener function
+    var eventListener = function(pEvent) {
+      var origin = pEvent.origin;
+
+      // origin check
+      if(origin != self.parentURL) {
+        return;
+      }
+
+      var data;
+      if (typeof pEvent.data == 'string') {
+        data = JSON.parse(pEvent.data);
+      } else {
+        data = pEvent.data;
+      }
+
+      var id = data.id;
+      var target = data.target;
+      var payload = data.payload;
+
+      var commonFunc = function(pSuccess, pResult) {
+        var result = {};
+        result.id = id;
+        result.success = pSuccess;
+        result.payload = pResult;
+
+        // send the result back to the main window
+        pEvent.source.postMessage(JSON.stringify(result), origin);
+      };
+      var successFunc = function(pResult) {
+        commonFunc(true, pResult);
+      };
+      var errorFunc = function(pResult) {
+        commonFunc(false, pResult);
+      };
+
+      var exe = self.targetMap[target];
+      if(exe) {
+        exe(payload, successFunc, errorFunc);
+      }
+    };
+
+    // setup the event listener
+    window.addEventListener("message", eventListener, false);
+  };
+
+  //----------------------------------------
+  /**
+   * login
+   */
+  XDomainProxy.prototype.loginRequest = function(pUser, pPassword, pSuccessFunction,
+                                                 pErrorFunction, pData) {
+    var self = this;
+    var loginServicePath = XDomainProxy.LOGIN_SERVICE_PATH;
+    if(self.profileType == "admin" ||
+       self.profileType == "adminUI") {
+      loginServicePath = XDomainProxy.ADMIN_LOGIN_SERVICE_PATH;
+    } else if(self.profileType == "agent" ||
+              self.profileType == "agentUI") {
+      loginServicePath = XDomainProxy.AGENT_LOGIN_SERVICE_PATH;
+    }
+
+    var data = {};
+    data[XDomainProxy.GRANT_TYPE_PARAM] = XDomainProxy.PASSWORD_GRANT_TYPE_VALUE;
+    data[XDomainProxy.USERNAME_PARAM] = pUser;
+    data[XDomainProxy.PASSWORD_PARAM] = pPassword;
+
+    // success function
+    var successFunc = function(pResult) {
+      var resultData = pResult.data;
+      pSuccessFunction(resultData);
+    };
+    // error function
+    var errorFunc = function(pResult) {
+      var resultData = pResult.jqXHR.responseText;
+      if (resultData) {
+        resultData = JSON.parse(resultData);
+      }
+      pErrorFunction(resultData);
+    };
+
+    var headers = null;
+
+    var suppressProfileType = false;
+    if(pData)
+      suppressProfileType = pData.suppressProfileType;
+
+    // add profile type only if profile type is set
+    // unless we are in preview mode
+    if(self.profileType &amp;&amp; !suppressProfileType) {
+      headers = {};
+      headers[XDomainProxy.PROFILE_TYPE_HEADER_NAME] = self.profileType;
+    }
+
+    if(pData &amp;&amp; pData.tokenSecret) {
+      if(!headers) {
+        headers = {};
+      }
+      var authHeaderString = XDomainProxy.AUTH_HEADER_PREFIX + pData.tokenSecret;
+      headers[XDomainProxy.AUTH_HEADER_NAME] = authHeaderString;
+    }
+
+    var obj = {
+      type: XDomainProxy.POST,
+      dataType: XDomainProxy.JSON,
+      url: loginServicePath,
+      data: data,
+      processData: true,
+      success: function(data, textStatus, jqXHR) {
+        successFunc({data: data, textStatus: textStatus, jqXHR: jqXHR});
+      },
+      error: function(jqXHR, textStatus, errorThrown) {
+        errorFunc({jqXHR: jqXHR, textStatus: textStatus, errorThrown: errorThrown});
+      }
+    };
+
+    if(headers) {
+      obj["headers"] = headers;
+    }
+
+    // perform the login request
+    $.ajax(obj);
+  };
+
+  //----------------------------------------
+  /**
+   * request
+   * @param {function} pBeforeSendCallback (Optional) If set, this function is invoked immediately
+   * before the actual ajax call to the server. If the function returns false, the ajax call is not made.
+   * (See jQuery.ajax beforeSend setting.)
+   */
+  XDomainProxy.prototype.request = function(pUrl, pData,
+                                            pSuccessCallback, pErrorCallback,
+                                            pMethod, pClientProps,
+                                            pAdditionalHeadersMap,
+                                            pBeforeSendCallback) {
+    var assetLanguage,
+        self = this,
+        url = pUrl;
+
+    // make sure the url is encoded
+    url = encodeURI(url);
+
+    var method = pMethod;
+    if(!method) {
+      method = XDomainProxy.GET;
+    }
+    var stringData = null;
+
+    if(pData) {
+      // if it's a get, turn data into query params
+      if(method === XDomainProxy.GET || method === XDomainProxy.DELETE) {
+        url = XDomainProxy.addQueryParams(url, pData, true);
+      }
+      // for anything else, convert data into json string
+      else {
+        stringData = JSON.stringify(pData);
+      }
+    }
+
+    if(method === XDomainProxy.GET) {
+      url = XDomainProxy.fixIECaching(url);
+    }
+
+    var successFunc = function(pResult) {
+      var resultData = pResult.data;
+      var etag = pResult.jqXHR.getResponseHeader(XDomainProxy.ETAG);
+
+      if(etag &amp;&amp; resultData) {
+        // etag is appended with extra quotes in Safari browser.
+        // So removing extra quotes from etag.
+        etag = etag.replace(/["]+/g, "");
+        
+        resultData[XDomainProxy.ETAG_PROPERTY] = etag;
+      }
+      pSuccessCallback(resultData);
+    };
+    var errorFunc = function(pResult) {
+      var resultStatus = pResult.jqXHR.status;
+      var resultData = pResult.jqXHR.responseText;
+      if (resultData) {
+        try {
+          resultData = JSON.parse(resultData);
+        }
+        catch(e) {
+          resultData = {};
+        }
+      }
+      pErrorCallback(resultData, resultStatus);
+    };
+
+    var obj = {
+      dataType: XDomainProxy.JSON,
+      contentType: XDomainProxy.APPLICATION_JSON,
+      type: method,
+      url: url,
+      processData: false,
+      success: function(data, textStatus, jqXHR) {
+        successFunc({data: data, textStatus: textStatus, jqXHR: jqXHR});
+      },
+      error: function(jqXHR, textStatus, errorThrown) {
+        errorFunc({jqXHR: jqXHR, textStatus: textStatus, errorThrown: errorThrown});
+      },
+      beforeSend: pBeforeSendCallback
+    };
+
+    var headers = null;
+
+    var suppressProfileType = false;
+    if(pClientProps)
+      suppressProfileType = pClientProps.suppressProfileType;
+
+    // add profile type only if profile type is set
+    // unless we are in preview mode
+    if(self.profileType &amp;&amp; !suppressProfileType) {
+      headers = {};
+      headers[XDomainProxy.PROFILE_TYPE_HEADER_NAME] = self.profileType;
+    }
+
+    // Setup the additional headers
+    if (pAdditionalHeadersMap) {
+      if (!headers) {
+        headers = {};
+      }
+
+      for(var headerName in pAdditionalHeadersMap) {
+        if(pAdditionalHeadersMap.hasOwnProperty(headerName)) {
+          if (pAdditionalHeadersMap[headerName] instanceof Object) {
+            // If the header contains an object, it should be passed as a plain string to Jersey
+            headers[headerName] = JSON.stringify(pAdditionalHeadersMap[headerName]);
+          } else {
+            headers[headerName] = pAdditionalHeadersMap[headerName];
+          }
+        }
+      }
+    }
+
+    // Add auth header string
+    if(pClientProps &amp;&amp; pClientProps.tokenSecret) {
+      if(!headers) {
+        headers = {};
+      }
+      var authHeaderString = XDomainProxy.AUTH_HEADER_PREFIX + pClientProps.tokenSecret;
+      headers[XDomainProxy.AUTH_HEADER_NAME] = authHeaderString;
+    }
+
+    if(stringData) {
+      obj["data"] = stringData;
+    }
+    if(headers) {
+      obj["headers"] = headers;
+    }
+    $.ajax(obj);
+  };
+
+  //----------------------------------------
+  // static methods
+  //----------------------------------------
+
+  //----------------------------------------
+  /**
+   * parse query params into a map
+   */
+  XDomainProxy.parseQueryParams = function(pParams) {
+    if(pParams === null) {
+      return null;
+    }
+    var pairs = pParams.split(XDomainProxy.AMPERSAND);
+    var paramMap = {};
+    for(var i=0; i &lt; pairs.length; i++) {
+      var pair = pairs[i].split(XDomainProxy.EQUALS);
+      paramMap[pair[0]] = pair[1];
+    }
+    return paramMap;
+  };
+
+  //----------------------------------------
+  /**
+   * add query params to a url
+   */
+  XDomainProxy.addQueryParams = function(pUrl, pData, pEncode) {
+    if(!pUrl) {
+      return null;
+    }
+    if(!pData) {
+      return pUrl;
+    }
+    var keys = Object.keys(pData);
+    if(keys &amp;&amp; keys.length === 0) {
+      return pUrl;
+    }
+
+    var url = pUrl;
+    var needsQuestionMark = true;
+    if(url.indexOf("?") !== -1) {
+      needsQuestionMark = false;
+    }
+
+    for(var i=0; i &lt; keys.length; i++) {
+      var key = keys[i];
+      var value = pData[keys[i]];
+      if(pEncode) {
+        key = encodeURIComponent(key);
+        value = encodeURIComponent(value);
+      }
+      var pair = key + "=" + value;
+      var sep = "&amp;";
+      if(needsQuestionMark) {
+        sep = "?";
+        needsQuestionMark = false;
+      }
+      url += sep + pair;
+    }
+
+    return url;
+  };
+
+  //----------------------------------------
+  /**
+   * get a timestamp
+   */
+  XDomainProxy.getTimestamp = function(pOffset) {
+    var current = new Date() / 1000;
+    var offset = parseInt(pOffset, 10);
+    var withOffset = current + offset;
+    return parseInt(+ withOffset, 10);
+  };
+
+  //----------------------------------------
+  /**
+   * get the cross domain url
+   */
+  XDomainProxy.getCrossDomainURL = function(pProfileType,
+                                            pProtocol,
+                                            pPort,
+                                            pWithFramePath) {
+    var crossDomainURL =
+      pProtocol +
+      XDomainProxy.PROTOCOL_SEP +
+      XDomainProxy.urlHostnameOnly(window.location.href) +
+      XDomainProxy.COLON +
+      pPort;
+
+    if(pWithFramePath === true) {
+      if(pProfileType === "storefront" ||
+          pProfileType == "storefrontUI") {
+        crossDomainURL += XDomainProxy.HTTPS_FRAME_PATH;
+      }
+      else if(pProfileType === "admin" ||
+          pProfileType == "adminUI") {
+        crossDomainURL += XDomainProxy.HTTPS_ADMIN_FRAME_PATH;
+      }
+    }
+    return crossDomainURL;
+  };
+
+  //----------------------------------------
+  /**
+   * split a url string into its component parts
+   */
+  XDomainProxy.convertUrl = function(pUrl) {
+    // if it's not a url, just return it
+    if(pUrl != null &amp;&amp; pUrl.charAt(0) != XDomainProxy.SLASH) {
+      return [pUrl];
+    }
+
+    var url = XDomainProxy.urlPathPortionOnly(pUrl);
+
+    var rawParts = url.split(XDomainProxy.SLASH);
+    // if the array only has one element, just return slash
+    if(rawParts.length == 1) {
+      return [XDomainProxy.SLASH];
+    }
+    // if the first element is empty, get rid of it
+    if(!rawParts[0]) {
+      rawParts = rawParts.slice(1);
+    }
+
+    var parts = new Array( rawParts.length + 1);
+    parts[0] = XDomainProxy.SLASH;
+    parts[1] = rawParts[0];
+
+    for(var i=1; i &lt; rawParts.length; i++) {
+      parts[i+1] = XDomainProxy.SLASH + rawParts[i];
+    }
+
+    return parts;
+  };
+
+  //----------------------------------------
+  /**
+   * get a url with no query params or protocol
+   */
+  XDomainProxy.urlNoProtocolOrQueryParams = function(pUrl) {
+    if(pUrl == null) {
+      return null;
+    }
+    // first chop off any query params
+    var rawParts = pUrl.split(XDomainProxy.QUESTION_MARK);
+    var url = null;
+    if(rawParts.length > 1) {
+      url = rawParts[0];
+    }
+    else {
+      url = pUrl;
+    }
+
+    // remove any protocol info
+    rawParts = url.split(XDomainProxy.PROTOCOL_SEP);
+    if(rawParts.length > 1) {
+      // chop off the protocol
+      url = rawParts[1];
+    }
+
+    return url;
+  };
+
+  //----------------------------------------
+  /**
+   * get only the path portion of a url
+   */
+  XDomainProxy.urlPathPortionOnly = function(pUrl) {
+    var url = XDomainProxy.urlNoProtocolOrQueryParams(pUrl);
+
+    // remove the host/port info
+    if(url.substring(0,1) !== XDomainProxy.SLASH) {
+      url = XDomainProxy.removeBeforeFirstSlash(url);
+    }
+
+    return url;
+  };
+
+  //----------------------------------------
+  /**
+   * get only the hostname + port portion of a url
+   */
+  XDomainProxy.urlHostnamePortPortionOnly = function(pUrl) {
+    var url = XDomainProxy.urlNoProtocolOrQueryParams(pUrl);
+
+    // if there's no hostname + port, then return null
+    if(url.substring(0,1) == XDomainProxy.SLASH) {
+      return null;
+    }
+
+    var rawParts = url.split(XDomainProxy.SLASH);
+    return rawParts[0];
+  };
+
+  //----------------------------------------
+  /**
+   * get only the hostname of a url
+   */
+  XDomainProxy.urlHostnameOnly = function(pUrl) {
+    var url = XDomainProxy.urlHostnamePortPortionOnly(pUrl);
+    var parts = url.split(XDomainProxy.COLON);
+    return parts[0];
+  };
+
+  //----------------------------------------
+  /**
+   * get only the protocol of a url
+   */
+  XDomainProxy.urlProtocolOnly = function(pUrl) {
+    var rawParts = pUrl.split(XDomainProxy.PROTOCOL_SEP);
+    return rawParts[0];
+  };
+
+  //----------------------------------------
+  /**
+   * remove everything before the first slash in a string
+   */
+  XDomainProxy.removeBeforeFirstSlash = function(pUrl) {
+    var rawParts = pUrl.split(XDomainProxy.SLASH);
+    var url = pUrl.substring(rawParts[0].length);
+    return url;
+  };
+
+  /**
+   * Fix for IE to prevent caching of GET requests.
+   */
+  XDomainProxy.fixIECaching = function(url) {
+    // All IE versions from IE8 contains Trident as part of userAgent,
+    // unlike appname which is "Microsoft Internet Explorer" till IE10 and is "Netscape" from IE11.
+    // Edge does not use the Trident string unlike most IE. Adding Edge string
+    // to make sure it works properly in Edge. See the link below:
+    // https://msdn.microsoft.com/en-us/library/hh869301(v=vs.85).aspx
+    if(url &amp;&amp; (!!(navigator.userAgent.match(/Trident/)) || !!(navigator.userAgent.match(/Edge/))) ) {
+      url += (url.indexOf("?") !== -1 ? "&amp;" : "?") + "__ie__fix__=" + new Date().getTime();
+    }
+    return url;
+  };
+
+  //----------------------------------------
+  /**
+   * insert auth headers as query parameters in a URI
+   */
+  XDomainProxy.insertAuthHeadersAsQueryParams = function(pUri, pConfig, pEncode) {
+    var uri = pUri;
+    var baseUri = uri;
+
+    var params = {};
+
+    var token = pConfig.token;
+    if(token)
+      params[XDomainProxy.OAUTH_ACCESS_TOKEN_PARAM] = token;
+
+    var profileType = pConfig.profileType;
+    if(profileType) {
+      params[XDomainProxy.PROFILE_TYPE_HEADER_NAME] = profileType;
+    }
+
+    uri = XDomainProxy.addQueryParams(uri, params, pEncode);
+    return uri;
+  };
+
+  //----------------------------------------
+  /**
+   * parse out the profile id from an access token
+   */
+  XDomainProxy.parseClaimsFromAccessToken = function(pAccessToken) {
+    if(!pAccessToken) {
+      return null;
+    }
+    var parts = pAccessToken.split(XDomainProxy.PERIOD);
+    var tokenBody = parts[1];
+    var decodedBody = XDomainProxy.decodeBase64(tokenBody);
+    var json = JSON.parse(decodedBody);
+    return json;
+  };
+
+  //----------------------------------------
+  /**
+   * decode base64
+   */
+  XDomainProxy.decodeBase64 = function(s) {
+    var e={},i,b=0,c,x,l=0,a,r='',w=String.fromCharCode,L=s.length;
+    var A="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for(i=0;i&lt;64;i++){e[A.charAt(i)]=i;}
+    for(x=0;x&lt;L;x++){
+      c=e[s.charAt(x)];b=(b&lt;&lt;6)+c;l+=6;
+      while(l>=8){((a=(b>>>(l-=8))&amp;0xff)||(x&lt;(L-2)))&amp;&amp;(r+=w(a));}
+    }
+    return r;
+  };
+
+  return XDomainProxy;
+});
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Index</a></h2><h3>Modules</h3><ul><li><a href="module-ccKoErrorWrapper.html">ccKoErrorWrapper</a></li><li><a href="module-ccKoExtensions.html">ccKoExtensions</a></li></ul><h3>Classes</h3><ul><li><a href="Address.html">Address</a></li><li><a href="CartViewModel.html">CartViewModel</a></li><li><a href="DynamicProperty.html">DynamicProperty</a></li><li><a href="EventDispatcher.html">EventDispatcher</a></li><li><a href="GiftCardViewModel.html">GiftCardViewModel</a></li><li><a href="GiftProductListingViewModel.html">GiftProductListingViewModel</a></li><li><a href="ko.bindingHandlers.background.html">background</a></li><li><a href="ko.bindingHandlers.carouselSwipe.html">carouselSwipe</a></li><li><a href="ko.bindingHandlers.ccForm.html">ccForm</a></li><li><a href="ko.bindingHandlers.ccLink.html">ccLink</a></li><li><a href="ko.bindingHandlers.ccValidation.html">ccValidation</a></li><li><a href="ko.bindingHandlers.checkbox.html">checkbox</a></li><li><a href="ko.bindingHandlers.chosen.html">chosen</a></li><li><a href="ko.bindingHandlers.contextResourcesNamespace.html">contextResourcesNamespace</a></li><li><a href="ko.bindingHandlers.currency.html">currency</a></li><li><a href="ko.bindingHandlers.datepicker.html">datepicker</a></li><li><a href="ko.bindingHandlers.datepopover.html">datepopover</a></li><li><a href="ko.bindingHandlers.draggable.html">draggable</a></li><li><a href="ko.bindingHandlers.droppable.html">droppable</a></li><li><a href="ko.bindingHandlers.fade.html">fade</a></li><li><a href="ko.bindingHandlers.hover.html">hover</a></li><li><a href="ko.bindingHandlers.imageSource.html">imageSource</a></li><li><a href="ko.bindingHandlers.imageZoom.html">imageZoom</a></li><li><a href="ko.bindingHandlers.localeText.html">localeText</a></li><li><a href="ko.bindingHandlers.makeAccess.html">makeAccess</a></li><li><a href="ko.bindingHandlers.modal.html">modal</a></li><li><a href="ko.bindingHandlers.modalTabbingContraint.html">modalTabbingContraint</a></li><li><a href="ko.bindingHandlers.onRender.html">onRender</a></li><li><a href="ko.bindingHandlers.popeditor.html">popeditor</a></li><li><a href="ko.bindingHandlers.popover.html">popover</a></li><li><a href="ko.bindingHandlers.productImageSource.html">productImageSource</a></li><li><a href="ko.bindingHandlers.propertyEditor.html">propertyEditor</a></li><li><a href="ko.bindingHandlers.radio.html">radio</a></li><li><a href="ko.bindingHandlers.richTextEditor.html">richTextEditor</a></li><li><a href="ko.bindingHandlers.scrollAffix.html">scrollAffix</a></li><li><a href="ko.bindingHandlers.select2.html">select2</a></li><li><a href="ko.bindingHandlers.select2Tags.html">select2Tags</a></li><li><a href="ko.bindingHandlers.selectable.html">selectable</a></li><li><a href="ko.bindingHandlers.slickList.html">slickList</a></li><li><a href="ko.bindingHandlers.slide.html">slide</a></li><li><a href="ko.bindingHandlers.slider.html">slider</a></li><li><a href="ko.bindingHandlers.spectrum.html">spectrum</a></li><li><a href="ko.bindingHandlers.tagsInput.html">tagsInput</a></li><li><a href="ko.bindingHandlers.textCheck.html">textCheck</a></li><li><a href="ko.bindingHandlers.timepicker.html">timepicker</a></li><li><a href="ko.bindingHandlers.triggerMessage.html">triggerMessage</a></li><li><a href="ko.bindingHandlers.validatableTarget.html">validatableTarget</a></li><li><a href="ko.bindingHandlers.validatableValue.html">validatableValue</a></li><li><a href="ko.bindingHandlers.widgetLocaleText.html">widgetLocaleText</a></li><li><a href="koValidation.alphaNumeric.html">alphaNumeric</a></li><li><a href="koValidation.alphaNumericNoSpaces.html">alphaNumericNoSpaces</a></li><li><a href="koValidation.alphaNumericNoSpacesWithSeperators.html">alphaNumericNoSpacesWithSeperators</a></li><li><a href="koValidation.alphaNumericWithSeperators.html">alphaNumericWithSeperators</a></li><li><a href="koValidation.bool.html">bool</a></li><li><a href="koValidation.creditcard.html">creditcard</a></li><li><a href="koValidation.cvv.html">cvv</a></li><li><a href="koValidation.endmonth.html">endmonth</a></li><li><a href="koValidation.endyear.html">endyear</a></li><li><a href="koValidation.importFileName.html">importFileName</a></li><li><a href="koValidation.laterDate.html">laterDate</a></li><li><a href="koValidation.match.html">match</a></li><li><a href="koValidation.mediaZipFileName.html">mediaZipFileName</a></li><li><a href="koValidation.number.html">number</a></li><li><a href="koValidation.observablePattern.html">observablePattern</a></li><li><a href="koValidation.password.html">password</a></li><li><a href="koValidation.price.html">price</a></li><li><a href="koValidation.propertyIdAlreadyInUse.html">propertyIdAlreadyInUse</a></li><li><a href="koValidation.propertyNameAlreadyInUse.html">propertyNameAlreadyInUse</a></li><li><a href="koValidation.restrictSlashCharacters.html">restrictSlashCharacters</a></li><li><a href="koValidation.startmonth.html">startmonth</a></li><li><a href="koValidation.startyear.html">startyear</a></li><li><a href="koValidation.uniqueTrimmed.html">uniqueTrimmed</a></li><li><a href="koValidation.uniqueTrimmedCaseInsensitive.html">uniqueTrimmedCaseInsensitive</a></li><li><a href="koValidation.url.html">url</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.addTemplate.html">addTemplate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDate.html">ccDate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDateTime.html">ccDateTime</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccNumber.html">ccNumber</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.disabled.html">disabled</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.element.html">element</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.embeddedAssistance.html">embeddedAssistance</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.inTabFlow.html">inTabFlow</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.setContextVariable.html">setContextVariable</a></li><li><a href="NavStateViewModel.html">NavStateViewModel</a></li><li><a href="OrderHistoryViewModel.html">OrderHistoryViewModel</a></li><li><a href="OrderViewModel.html">OrderViewModel</a></li><li><a href="ParentOrganisation.html">ParentOrganisation</a></li><li><a href="ProductListingSearchViewModel.html">ProductListingSearchViewModel</a></li><li><a href="ProductListingViewModel.html">ProductListingViewModel</a></li><li><a href="ProductViewModel.html">ProductViewModel</a></li><li><a href="PubSub.topicNames.html">topicNames</a></li><li><a href="resetCVV.html">resetCVV</a></li><li><a href="resetPaymentDetails.html">resetPaymentDetails</a></li><li><a href="SearchRestClient.html">SearchRestClient</a></li><li><a href="UserViewModel.html">UserViewModel</a></li><li><a href="WidgetViewModel.html">WidgetViewModel</a></li><li><a href="WishlistContentViewModel.html">WishlistContentViewModel</a></li></ul><h3>Namespaces</h3><ul><li><a href="ko.bindingHandlers.html">bindingHandlers</a></li><li><a href="ko.extenders.html">extenders</a></li><li><a href="koValidation.html">koValidation</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CCEETagProcessor">CCEETagProcessor</a></li><li><a href="global.html#isValidDeterminewhetherornotthepaymentdetailsobjectisvalidbasedonthevalidityofitscomponentparts.Thiswillnotcauseerrormessagestobedisplayedforanyobservablevaluesthatareunchangedandhaveneverreceivedfocusontherelatedformfield(s).">isValid
+Determine whether or not the payment details object is valid
+based on the validity of its component parts. This will not
+cause error messages to be displayed for any observable values
+that are unchanged and have never received focus on the 
+related form field(s).</a></li><li><a href="global.html#validatePaymentDetailsForceallrelevantmemberobservablestoperformtheirvalidationnow&displaytheerrors(ifany)">validatePaymentDetails
+Force all relevant member observables to perform their
+validation now & display the errors (if any)</a></li></ul>
+</nav>
+
+<br clear="both">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0</a> on Mon Oct 10 2016 10:49:03 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

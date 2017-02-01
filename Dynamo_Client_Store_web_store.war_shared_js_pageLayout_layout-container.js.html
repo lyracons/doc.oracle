@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Dynamo/Client/Store/web/store.war/shared/js/pageLayout/layout-container.js</title>
+    
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    
+    <h1 class="page-title">Source: Dynamo/Client/Store/web/store.war/shared/js/pageLayout/layout-container.js</h1>
+    
+    
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source"><code>/**
+ * @fileoverview Controlling class that maintains the processing and
+ * flow of a page. Defines the LayoutContainer view model.
+ *
+ */
+
+/*global $ */
+/*global require */
+define(
+  //-------------------------------------------------------------------
+  // PACKAGE NAME
+  //-------------------------------------------------------------------
+  'pageLayout/layout-container',
+
+  //-------------------------------------------------------------------
+  // DEPENDENCIES
+  //-------------------------------------------------------------------
+  [ 'knockout',
+    'pageLayout/data',
+    'pageLayout/layout',
+    'pageLayout/region',
+    'pageLayout/widget',
+    'pageLayout/cart',
+    'pageLayout/order',
+    'pageLayout/layout-mapping',
+    'pageLayout/simple-cache',
+    'pageLayout/context-handler',
+    'pageLayout/view-model-builder',
+    'pageLayout/search',
+    'pageLayout/shippingmethods',
+    'pageLayout/payment-auth-response',
+    'pageLayout/user',
+    'pageLayout/product',
+    'pageLayout/space',
+    'pageViewTracker',
+    'viewModels/paymentDetails',
+    'pubsub',
+    'CCi18n',
+    'ccConstants',
+    'ccLogger',
+    'jquery',
+    'notifier',
+    'spinner',
+    'pageLayout/site',
+    'storageApi',
+    'sfExceptionHandler',
+    'ccStoreServerLogger',
+    'viewportHelper',
+    'navigation',
+    'ccRestClient'
+  ],
+
+  //-------------------------------------------------------------------
+  // MODULE DEFINTIION
+  //-------------------------------------------------------------------
+  function (ko, ServerData, LayoutViewModel, RegionViewModel, WidgetViewModel,
+   CartViewModel, OrderViewModel, LayoutMapping, Cache, ContextHandler,
+   ViewModelBuilder, SearchViewModel, ShippingMethodsViewModel, PaymentAuthResponseViewModel,
+   UserViewModel, ProductViewModel, SpaceViewModel, pageViewTracker, PaymentDetails, PubSub, CCi18n, CCConstants,
+   ccLogger, $, notifier, spinner, SiteViewModel, storageApi, ExceptionHandler, StoreServerLogger, viewportHelper, navigation, ccRestClient) {
+
+    "use strict";
+
+    //-----------------------------------------------------------------
+    //Class definition &amp; member variables (the constructor)
+    //-----------------------------------------------------------------
+    /**
+     * Creates an LayoutContainer object. LayoutContainer controls the flow of a page including how to build
+     * a {@link LayoutViewModel|layout}, how to load data, and managing contextual data. All 
+     * {@link WidgetViewModel|widgets} are constructed via the LayoutContainer.
+     * 
+     * @param {Object} adapter The current context of the page.
+     * @param {String} basePath The URL path to this widget.
+     * 
+     * @private
+     * @class
+     * @name LayoutContainer
+     * @property {LayoutMapping} layoutMapping The mapping used to map a layout.
+     * @property {WidgetEditorViewModel} editor The widget editor responsible for editing widgets.
+     * @property {SimpleCache} cache The Cache used to store retrieved records.
+     * @property {ContextHandler} contextHandler The context handler used to manage contextual data.
+     * @property {ViewModelBuilder} viewModelBuilder The view model builder used to convert json to view models.
+     */
+    function LayoutContainer(adapter, basePath) {
+      var self = this;
+
+      this.isPreview;
+      this.layoutMapping = new LayoutMapping(this);
+      this.basePath = basePath;
+      this.adapter = adapter;
+      this.cache = new Cache();
+      this.widgetCache = new Cache();
+      this.contextHandler = new ContextHandler();
+      this.viewModelBuilder = ViewModelBuilder;
+      this.contextDataSet = $.Deferred();
+      this.contextDataSetSubscriber = this.contextDataSet.promise();
+      this.networkErrorMessage;
+      this.networkErrorReloadText;
+      self.storeServerLog = StoreServerLogger.getInstance();
+
+      this.currentPage = null;
+      // Widgets that are currently being initialized (if any)
+      this.pendingWidgets = ko.observableArray().extend({ deferred: true });
+      $.Topic(PubSub.topicNames.PAGE_VIEW_CHANGED).subscribe(self.pageViewChanged.bind(self));
+      $.Topic(PubSub.topicNames.PAGE_CONTEXT_CHANGED).subscribe(self.pageContextChanged.bind(self));
+      $.Topic(PubSub.topicNames.PAGE_PARAMETERS_CHANGED).subscribe(self.pageParametersChanged.bind(self));
+      $.Topic(PubSub.topicNames.PAGE_READY).subscribe(self.pageReady.bind(self));
+      $.Topic(PubSub.topicNames.RECORD_PAGINATION_PAGE_CHANGE).subscribe(self.pageReady.bind(self));
+      $.Topic(PubSub.topicNames.USER_NETWORK_ERROR).subscribe(self.networkError.bind(self));
+      
+      // Exception handing
+      var clientDebugMode = true;
+      if (clientDebugMode) {
+        this.exceptionHandler = new ExceptionHandler();
+        if (this.exceptionHandler.subscribe) {
+          this.exceptionHandler.subscribe();
+        }
+      }
+
+      return (this);
+    }
+
+    //------------------------------------------------------------------
+    // Class functions
+    //------------------------------------------------------------------
+
+    /**
+     * Returns a view model builder for the passed in type, or creates a default builder if none found.
+     *
+     * @function
+     * @name LayoutContainer#getViewModelBuilder
+     * @param {string} type The type of object for which to return a builder.
+     * @returns {ViewModelBuilder} View model builder for `type'.
+     */
+    LayoutContainer.prototype.getViewModelBuilder = function(type) {
+      var builder = this.viewModelBuilder[type];
+
+      if(builder == null) {
+        builder = {
+          scope: 'page',
+          cacheable: false,
+          load: true,
+          create: true
+        };
+      }
+      return builder;
+    };
+
+  /**
+   * Walk the properties in "global" and "page" scope.
+   * For each property add it to the context handler so that
+   * it can be available for widgets to enjoy.
+   * 
+   * @private
+   * @function
+   * @name LayoutContainer#setContextData
+   * @param {Object} serverData
+   */
+  LayoutContainer.prototype.setContextData = function(serverData) {
+    //var serverData = layoutViewMapping.data,
+    var topLevelProps, propsIdx = 0,
+      property;
+    //if (!serverData) { return; }
+    var self = this;
+    var processServerData = function() {
+      topLevelProps = ['global', 'page'];
+      for (propsIdx = 0; propsIdx &lt; topLevelProps.length; propsIdx++) {
+        for (property in serverData[topLevelProps[propsIdx]]) {
+          if (serverData[topLevelProps[propsIdx]].hasOwnProperty(property) &amp;&amp; property !== "__ko_mapping__") {
+            self.loadCurrentFromJSON(property,
+              serverData[topLevelProps[propsIdx]][property], serverData);
+          }
+        }
+      }
+
+      // Context data all set. Dependencies can execute now
+      self.contextDataSet.resolve();
+
+      // Reset the deferred stuff as it seems to not quite work on IE if you dont...
+      self.contextDataSet = $.Deferred();
+      self.contextDataSetSubscriber = self.contextDataSet.promise();
+
+    };
+     // Setup locale before building any view models
+    var localeFromServer = serverData['global']['locale'];
+    if (localeFromServer &amp;&amp; localeFromServer !== null) {
+      CCi18n.setLocaleOnce(localeFromServer,processServerData);
+    } else {
+      // we don't have a locale, keep on going
+      processServerData();
+    }
+  };
+  
+  /**
+   * Listens for PAGE_CONTEXT_CHANGED events and
+   * requests only data from the server. When data is
+   * return it sets up context variables according to the
+   * returned data.
+   * 
+   * @private
+   * @function
+   * @name LayoutContainer#pageContextChanged
+   * @param {string} data.contextId New context id.
+   * @param {string} data.pageId URL to request.
+   */
+   LayoutContainer.prototype.pageContextChanged = function (data) {
+    var self = this;
+    self.currentPage = data;
+    var requestURL = data.pageId;
+    var params = {};
+    params[CCConstants.PAGE_PARAM] = data.contextId;
+    params[CCConstants.DATA_ONLY] = true;
+    this.load('layout', requestURL, params,
+      // Callback for load result
+      function (result) {
+        // Update context variables
+        self.setContextData(result.data);
+        self.updatePageEventData(result.data, data);
+        if (result.data &amp;&amp; result.data.global &amp;&amp; result.data.global.site) {
+          if (result.data.global.site.tenantId) {
+            pageViewTracker.tenantId(result.data.global.site.tenantId);
+          }
+        }
+        // Do we need to publish here? Sure...
+       $.Topic(PubSub.topicNames.PAGE_METADATA_CHANGED).publish(result);
+       $.Topic(PubSub.topicNames.PAGE_READY).publish(data);
+      },
+      self.handleServerError
+      );
+   };
+
+   /**
+    * Adds the page repository id from the server context data to the page event data being
+    * passed around.
+    * 
+    * @private
+    * @function
+    * @name LayoutContainer#updatePageEventData
+    * @param {Object} pServerData
+    * @param {Object} pPageEventData
+    */
+   LayoutContainer.prototype.updatePageEventData = function(pServerData, pPageEventData) {
+
+     if (pServerData.page &amp;&amp; pServerData.page.repositoryId) {
+       pPageEventData.pageRepositoryId = pServerData.page.repositoryId;
+     }
+   };
+
+   /**
+    * Callback function invoked if an error is returned after a request.
+    * 
+    * @private
+    * @function
+    * @name LayoutContainer#handleServerError
+    * @param {Object} result Result object returned from server.
+    */
+   LayoutContainer.prototype.handleServerError  = function (result) {
+    $.Topic(PubSub.topicNames.PAGE_LAYOUT_SERVER_ERROR).publish(result);
+   };
+
+   /**
+    * Listens for PAGE_PARAMETERS_CHANGED events. When data is returned it
+    * pushes a PubSub PAGE_PARAMETERS event for transferring the data to
+    * appropriate location for handling the data
+    * e.g. when the view is "searchresults"
+    * the data is sent to searchViewModel for creation of a
+    * new search with the data provided
+    *
+    * @private
+    * @function
+    * @name LayoutContainer#pageParametersChanged
+    * @param {Object} pageEventData The parameter string part of the URL.
+    */
+   LayoutContainer.prototype.pageParametersChanged = function(pageEventData) {
+     var parameters = this.getParameterData(pageEventData.parameters);
+     $.Topic(PubSub.topicNames.PAGE_PARAMETERS).publishWith(
+       {
+         pageId: pageEventData.pageId,
+         seoslug: pageEventData.seoslug,
+         parameters: parameters
+       },[{message:"success"}]);
+     this.pageContextChanged(pageEventData);
+   };
+
+    /**
+     * Listens for PAGE_VIEW_CHANGED events and updates the
+     * layout according to the new view id.
+     * 
+     * @private
+     * @function
+     * @name LayoutContainer#pageViewChanged
+     * @param {Object} pageEventData Arguments passed in via the page view event.
+     */
+    LayoutContainer.prototype.pageViewChanged = function (pageEventData) {
+
+      var self = this;
+      self.currentPage = pageEventData;
+      // default location if no pageId is provided
+      var requestURL = 'home/';
+      var params = null;
+      if (pageEventData.pageId) {
+        // use the provided page ID
+        requestURL = pageEventData.pageId;
+      }
+      if (pageEventData.contextId) {
+        // If we have context params add them
+        requestURL = pageEventData.pageId;
+        params = {};
+        params[CCConstants.PAGE_PARAM] = pageEventData.contextId;
+        params[CCConstants.DATA_ONLY] = false;
+      }
+
+      this.load('layout', requestURL, params,
+      // Callback for load result
+      function (result) {
+        self.isPreview = result.isPreview();
+
+        var subscription;
+        // Update context variables
+        self.setContextData(result.data);
+        self.updatePageEventData(result.data, pageEventData);
+        if (result.data &amp;&amp; result.data.global &amp;&amp; result.data.global.site) {
+          if (result.data.global.site.tenantId) {
+            pageViewTracker.tenantId(result.data.global.site.tenantId);
+          }
+        }
+
+        // Send the parameters
+        if (pageEventData.parameters) {
+          var parameters = self.getParameterData(pageEventData.parameters);
+          $.Topic(PubSub.topicNames.PAGE_PARAMETERS).publishWith(
+            {
+              pageId: pageEventData.pageId,
+              seoslug: pageEventData.seoslug,
+              parameters: parameters
+            },[{message:"success"}]);
+        }
+
+        // Update page regions
+        // TODO: Fire event here rather than
+        // direct link to the view model
+      //  masterViewModel.regions(result.regions());
+       $.Topic(PubSub.topicNames.PAGE_LAYOUT_LOADED).publish(result, pageEventData);
+       var param = {"pageId" : pageEventData.pageId};
+       self.storeServerLog.logInfo("getPage",self.storeServerLog.getMessage("getPage", param));
+       // if we have pending widgets, delay this event till they load
+       if (self.pendingWidgets().length === 0)
+         $.Topic(PubSub.topicNames.PAGE_READY).publish(pageEventData);
+       else {
+         // wait for pending widget count to drop to zero
+         subscription = self.pendingWidgets.subscribe(function(watchedPendingWidgets) {
+         if (watchedPendingWidgets.length === 0) {
+           $.Topic(PubSub.topicNames.PAGE_READY).publish(pageEventData);
+           subscription.dispose(); // stop listening
+         }
+        });
+       }
+
+      },
+      // Error Callback. Server is likely down.
+      self.handleServerError
+      );
+    };
+    
+    /**
+     * Request to persist the creation of a new object.
+     * 
+     * @private
+     * @function
+     * @name LayoutContainer#create
+     * @param {String} type The type of data being created.
+     * @param {String|String[]} id The id of the object being created using either a simple id (string) or
+     *   complex id (an array of values).
+     * @param {Object} model The viewModel to persist the creation of.
+     * @param {Object} params Additional parameters used for the request.
+     * @param {function} success A success function callback. Passes paramters (value, caller). value is the result of the create,
+     *   caller is used to reference the calling context.
+     * @param {function} error An error function callback invoked if there was an error with creation of the object.
+     * @param {Object} caller The caller to be passed to the success and error callbacks.
+     */
+    LayoutContainer.prototype.create = function(type, id, model, params, success, error, caller) {
+      var self = this,
+          builder,
+          createFunc,
+          json;
+
+      if($.isFunction(params)) {
+        if($.isFunction(success)) {
+          caller = error;
+          error = success;
+        } else {
+          caller = success;
+        }
+        success = params;
+        params = null;
+      } else if(!$.isFunction(error)) {
+        caller = error;
+        error = null;
+      }
+
+      //Get the viewModelBuilder for this type of object. If no builder, we
+      //cannot load an object of this type.
+      builder = this.getViewModelBuilder(type);
+      if(!builder || !builder.create) {
+        return;
+      }
+
+      //Add the item to the cache if it is cachable
+      if(builder.cachable) {
+        var cacheKey = self.idAndParamsToCacheKey(id, params);
+        self.cache.set(type, cacheKey, model);
+      }
+
+      //Get the builder's load function into this context.
+      createFunc = builder.create;
+
+      if(!createFunc) {
+        throw "Loading of resource type: " + type + " forbidden";
+      }
+
+      if(createFunc === true) {
+        json = model;
+      } else {
+        json = createFunc(model, params, caller);
+      }
+
+      //Ask the adapter to save the json
+      this.adapter.persistCreate(type, id, json, params,
+        function(data) {
+          if(success) {
+            success(data, caller);
+          }
+        },
+        function(data) {
+          if(error) {
+            error(data, caller);
+          }
+        });
+    };
+
+    /**
+     * Request to persist an update of an object.
+     *
+     * @private
+     * @function
+     * @name LayoutContainer#update
+     * @param {string} type The type of data being updated.
+     * @param {string|string[]} id The id of the object being updated using either a simple id (string) or
+     * complex id (an array of values).
+     * @param {Object} model The viewModel to update.
+     * @param {Object} params Additional parameters used for the request.
+     * @param {function} success A success function callback. Passes paramters (value, caller). value is the result of the update,
+     * caller is used to reference the calling context.
+     * @param {function} error An error function callback invoked if there was an error with updating the data.
+     * @param {Object} caller The caller to be passed to the success and error callbacks.
+     */
+    LayoutContainer.prototype.update = function(type, id, model, params, success, error, caller) {
+      var self = this,
+          builder,
+          updateFunc,
+          json,
+          errorCallback,
+          successCallback;
+
+      if($.isFunction(params)) {
+        if($.isFunction(success)) {
+          caller = error;
+          error = success;
+        } else {
+          caller = success;
+        }
+        success = params;
+        params = null;
+      } else if(!$.isFunction(error)) {
+        caller = error;
+        error = null;
+      }
+
+      //Get the viewModelBuilder for this type of object. If no builder, we
+      //cannot load an object of this type.
+      builder = this.getViewModelBuilder(type);
+      if(!builder || !builder.update) {
+        return;
+      }
+
+      //Get the builder's load function into this context.
+      updateFunc = builder.update;
+
+      if(!updateFunc) {
+        throw "Updating of resource type: " + type + " forbidden";
+      }
+
+      if(updateFunc === true) {
+        json = model;
+      } else {
+        json = updateFunc(model, params, caller);
+      }
+
+      //Ask the adapter to save the json
+      this.adapter.persistUpdate(type, id, json, params,
+        function(data) {
+          if(success) {
+            success(data, caller);
+          }
+        },
+        function(data) {
+          if(error) {
+            error(data, caller);
+          }
+        });
+    };
+
+
+    /**
+     * Request to permanently delete a new object.
+     * 
+     * @private
+     * @function
+     * @name LayoutContainer#remove
+     * @param {string} type The type of data being deleted.
+     * @param {string|string[]} id The id of the object being deleted using either a simple id (string) or
+     * complex id (an array of values).
+     * @param {Object} params Additional parameters used for the request.
+     * @param {function} success A success function callback. Passes paramters (value, caller). value is the result of the deletion,
+     * caller is used to reference the calling context.
+     * @param {function} error An error function callback invoked if there was an error with deletion of the object.
+     * @param {Object} caller The caller to be passed to the success and error callbacks.
+     */
+    LayoutContainer.prototype.remove = function(type, id, params, success, error, caller) {
+      var self = this,
+          builder,
+          removeFunc;
+
+      if($.isFunction(params)) {
+        if($.isFunction(success)) {
+          caller = error;
+          error = success;
+        } else {
+          caller = success;
+        }
+        success = params;
+        params = null;
+      } else if(!$.isFunction(error)) {
+        caller = error;
+        error = null;
+      }
+
+      //Get the viewModelBuilder for this type of object. If no builder, we
+      //cannot load an object of this type.
+      builder = this.getViewModelBuilder(type);
+      if(!builder || !builder.remove) {
+        return;
+      }
+
+      //If the object is cachable check the cache and result if there is a cache hit.
+      if(builder.cachable) {
+        var cacheKey = self.idAndParamsToCacheKey(id, params);
+        this.cache.set(type, cacheKey, null);
+      }
+
+      //Get the builder's load function into this context.
+      removeFunc = builder.remove;
+
+      if(!removeFunc) {
+        throw "Deleting of resource type: " + type + " forbidden";
+      }
+
+      //Ask the adapter to retreive the object.
+      this.adapter.persistDelete(type, id, params,
+        function(data) {
+          //Perform the callback
+          if(success) {
+            success(data, caller);
+          }
+        },
+        function(data) {
+          if(error) {
+            error(data, caller);
+          }
+        });
+    };
+
+    /**
+     * Request to load a piece of external data based on url, id and params.
+     * 
+     * @public
+     * @function
+     * @name LayoutContainer#loadRequestForLayout
+     * @param {string} pUrl The Url of the endpoint.
+     * @param {Object} pData Additional parameters used for the request.
+     * @param {string|string[]} pParam1 The id of the object(s) being loaded using either a simple id (string) or
+     * complex id (an array of values).
+     */
+    LayoutContainer.prototype.loadRequestForLayout = function(pUrl, pData, pParam1, pParam2, pParam3, pParam4, pBeforeSendCallback) {
+        var deferred = $.Deferred();
+        ccRestClient.request(pUrl, pData,
+          function (result) {
+            deferred.resolve(result);
+          },
+          function (result) {
+            deferred.reject(result);
+            if (result.status == CCConstants.HTTP_NOT_FOUND) {
+              // Passing in true for noHistory param (2nd param), we don't want the url to change on 404 pages.
+              navigation.goTo("/404", true, true);
+            } 
+          }, pParam1, pParam2, pParam3, pParam4, pBeforeSendCallback);  
+        
+        return deferred;
+    };
+
+    /**
+     * Request to load page endpoint data. The data is loaded and converted
+     * to a view model before being passed to the success callback.
+     * 
+     * @public
+     * @function
+     * @name LayoutContainer#loadDataForLayout
+     * @param {Object} input Additional parameters used for the request.
+     * @param {string|string[]} id The id of the object(s) being loaded using either a simple id (string) or
+     * complex id (an array of values).
+     * @param {function} success A success function callback. Passes paramters (viewModel, caller). viewModel is the result of the load,
+     * caller is used to reference the calling context.
+     * @param {function} error An error function callback invoked if there was an error with loading the data.
+     * @param {Object} builder The view model builder object fot type 'layout'
+     * @param {Object} caller The caller to be passed to the success and error callbacks.
+     */
+    LayoutContainer.prototype.loadDataForLayout = function(input, id, success, error, builder, caller) {
+      var self = this, params = input, loadFunc = builder.load;
+      var vp = viewportHelper.viewportDesignation();
+      var layoutOnlyRequest = $.extend({}, input, {layoutOnly:true});
+      if (vp) {
+        layoutOnlyRequest['ccvp'] = vp;
+      }
+
+      $.when (
+        this.loadRequestForLayout(CCConstants.ENDPOINT_PAGES_GET_PAGE, layoutOnlyRequest, id),
+        this.loadRequestForLayout(CCConstants.ENDPOINT_PAGES_GET_PAGE, $.extend({}, input, {cacheableDataOnly:true}), id),
+        this.loadRequestForLayout(CCConstants.ENDPOINT_PAGES_GET_PAGE, $.extend({}, input, {currentDataOnly:true}), id)
+      ).done (
+        function (pLayoutResult, pCacheableDataResult, pCurrentDataResult) {
+          if (success) {
+            // This will merge the 3 results into 1, meaning the response will look the same to the caller, regardless of the
+            // request being split into multiple calls.
+            var data = $.extend(true, pLayoutResult, pCacheableDataResult, pCurrentDataResult);
+            var result;
+
+            //Perform the load function to transform the JSON. If
+            //load is true, then just pass through the data. Otherwise
+            //set result to the transformed data.
+            if(loadFunc === true) {
+              result = data;
+            } else {
+              result = loadFunc(data, self, params);
+            }
+
+            //Add the item to the cache if it is cachable
+            if(builder.cachable) {
+              var cacheKey = self.idAndParamsToCacheKey(id, params);
+              self.cache.set(type, cacheKey, result);
+            }
+            //Perform the callback
+            success (result, caller);
+          } else if (result.status == 404) {
+            navigation.goTo("/404", true, true);
+          } else if (error &amp;&amp; pResult) {
+            error(pResult, caller);
+          }
+        }
+      );
+    };
+    
+    /**
+     * Request to load a piece of external data based on type, id, and params. The data is loaded and converted
+     * to a view model before being passed to the success callback.
+     * 
+     * @public
+     * @function
+     * @name LayoutContainer#load
+     * @param {string} type The type of data being requested.
+     * @param {string|string[]} id The id of the object(s) being loaded using either a simple id (string) or
+     * complex id (an array of values).
+     * @param {Object} params Additional parameters used for the request.
+     * @param {function} success A success function callback. Passes paramters (viewModel, caller). viewModel is the result of the load,
+     * caller is used to reference the calling context.
+     * @param {function} error An error function callback invoked if there was an error with loading the data.
+     * @param {Object} caller The caller to be passed to the success and error callbacks.
+     */
+    LayoutContainer.prototype.load = function(type, id, params, success, error, caller) {
+      var self = this,
+          builder,
+          loadFunc,
+          cacheResult;
+
+      if($.isFunction(params)) {
+        if($.isFunction(success)) {
+          caller = error;
+          error = success;
+        } else {
+          caller = success;
+        }
+        success = params;
+        params = null;
+      } else if(!$.isFunction(error)) {
+        caller = error;
+        error = null;
+      }
+
+      //Get the viewModelBuilder for this type of object. If no builder, we
+      //cannot load an object of this type.
+      builder = this.getViewModelBuilder(type);
+
+            // If it was not in the cache, need to
+      // call the load function
+      if(!builder || !builder.load) {
+        return;
+      }
+
+      //If the object is cachable check the cache and result if there is a cache hit.
+      if(builder.cachable) {
+        var cacheKey = self.idAndParamsToCacheKey(id, params);
+        cacheResult = this.cache.get(type, cacheKey);
+        if(cacheResult.hit === true) {
+          if(success) {
+            success(cacheResult.result, caller);
+          }
+          return;
+        }
+      }
+
+      //Get the builder's load function into this context.
+      loadFunc = builder.load;
+
+      if(!loadFunc) {
+        throw "Loading of resource type: " + type + " forbidden";
+      }
+
+      var input = params ? params : {}
+      if (type == 'layout' &amp;&amp; !input.dataOnly) {
+        this.loadDataForLayout(input, id, success, error, builder, caller)
+      } else {
+        //Ask the adapter to retreive the object.
+        this.adapter.loadJSON(type, id, params,
+          //success callback
+          function(data) {
+            var result;
+
+            //Perform the load function to transform the JSON. If
+            //load is true, then just pass through the data. Otherwise
+            //set result to the transformed data.
+            if(loadFunc === true) {
+              result = data;
+            } else {
+              result = loadFunc(data, self, params);
+            }
+
+            //Add the item to the cache if it is cachable
+            if(builder.cachable) {
+              var cacheKey = self.idAndParamsToCacheKey(id, params);
+              self.cache.set(type, cacheKey, result);
+            }
+
+            //Perform the callback
+            if(success) {
+              success(result, caller);
+            }
+          },
+          //error callback
+          function(data) {
+            if(error) {
+              error(data, caller);
+            }
+          });
+        }
+    };
+
+    /**
+     * Build a view model from the provided json for the given
+     * item type then sets that item as the current item for the given type.
+     * If the item is cachable and an id is provided the cache will be updated.
+     * 
+     * @private
+     * @function
+     * @name LayoutContainer#loadCurrentFromJSON
+     * @param {String} type The type of item to load and set as current.
+     * @param {Object} json The json object to transform into a view model
+     * @param {Object} params Additional parameters for the load.
+     * @param {string|string[]} id The id for the item as either a simple string id
+     *   or complex array id. Required to cache the viewModel. The viewModel
+     *   won't be cached if omitted
+     */
+    LayoutContainer.prototype.loadCurrentFromJSON = function(type, json, params, id) {
+      var scope, builder, viewModel, cacheResult;
+
+      builder = this.getViewModelBuilder(type);
+      if(!builder) {
+        return null;
+      }
+
+      if(builder.scope) {
+        scope = builder.scope;
+      } else {
+        scope = 'page';
+      }
+
+      if(builder.load) {
+        if(builder.load === true) {
+          this.contextHandler.set(type, json, scope);
+
+          if(id &amp;&amp; builder.cachable) {
+            var cacheKey = self.idAndParamsToCacheKey(id, params);
+            this.cache.set(type, cacheKey, viewModel);
+          }
+
+          return json;
+        }
+
+        viewModel = builder.load(json, this, params);
+        this.contextHandler.set(type, viewModel, scope);
+
+        if(id &amp;&amp; builder.cachable) {
+          var cacheKey = self.idAndParamsToCacheKey(id, params);
+          this.cache.set(type, cacheKey, viewModel);
+        }
+
+        return viewModel;
+      }
+      return null;
+    };
+
+    /**
+     * Instantiate a widget from a definition. Effectively copies all properties from
+     * the passed widget to a new {@link WidgetViewModel} then initializes the widget. The returned
+     * widget is a new WidgetViewModel with all of the same properties &amp; values as the old
+     * widget, but with distinct observables.
+     * 
+     * @private
+     * @function
+     * @name LayoutContainer#instantiateWidget
+     * @param {WidgetViewModel} widget The widget definition to instantiate.
+     * @returns {WidgetViewModel} The instantiated widget.
+     * @see LayoutContainer#initializeWidget
+     */
+    LayoutContainer.prototype.instantiateWidget = function (widget) {
+      var newWidget = new this.WidgetViewModel(this.basePath),
+          key,
+          ii;
+
+      //Copy all properties from the widget definition to the widget instance
+      for(key in widget) {
+        if(widget.hasOwnProperty(key)) {
+          //If copying an observable, create a new observable.
+          if(ko.isObservable(widget[key]) &amp;&amp; !ko.isComputed(widget[key])) {
+            //If remove exists the observable is an array
+            if(widget[key].remove) {
+              newWidget[key] = ko.observableArray(widget[key]());
+            } else {
+              newWidget[key] = ko.observable(widget[key]());
+            }
+          } else if(!ko.isComputed(widget[key])){
+            //If not an observable just copy the value
+            newWidget[key] = widget[key];
+          }
+        }
+      }
+
+      //Initialize the new widget
+      this.initializeWidget(newWidget, true);
+
+      return newWidget;
+    };
+
+    /**
+     * Run Widget Initialization after context data has been set from server.
+     * 
+     * @private
+     * @function
+     * @name LayoutContainer#initializeWidget
+     * @param {WidgetViewModel} widget Widget to initialize
+     * @param {boolean} load=false Whether to run 'onLoad' function and resolve special properties.
+     * @param {function} javascriptLoadedCallback Function/script to run after initializing widget.
+     */
+    LayoutContainer.prototype.initializeWidget = function (widget, load, javascriptLoadedCallback) {
+      var self = this;
+
+      self.contextDataSetSubscriber.done(function(){
+        self.runWidgetInitialization(widget, load, javascriptLoadedCallback);
+      });
+    };
+
+    /**
+     * Initializes the widget by loading its custom javascript, resolving any special properties,
+     * and running the onLoad function. Marks the widget as initialized once the processing has completed.
+     * 
+     * @private
+     * @function
+     * @name LayoutContainer#runWidgetInitialization
+     * @param {WidgetViewModel} widget The widget to initialize
+     * @param {boolean} load Whether or not to run the onLoad function and resolve its
+     *   special properties. True will cause the onLoad function to run, default is false.
+     * @param {function} javascriptLoadedCallback Function/script to run after initializing widget.
+     */
+    LayoutContainer.prototype.runWidgetInitialization = function (widget, load, javascriptLoadedCallback) {
+      var importKey, imports, scope, ii, layoutContainer = this;
+
+      layoutContainer.pendingWidgets.push(widget);
+
+      if(load) {
+        //Load any things pointed to as part of 'current'
+        if(widget.imports) {
+          imports = ko.utils.unwrapObservable(widget.imports);
+          for(ii = imports.length - 1; ii >= 0; ii -= 1) {
+            importKey = imports[ii];
+            scope = this.getViewModelBuilder(importKey);
+            if(scope) {
+              scope = scope.scope || 'page';
+            }
+            widget[importKey] = this.contextHandler.get(importKey, scope);
+          }
+        }
+      }
+
+      //If the widget has javascript load it.
+      if(ko.utils.unwrapObservable(widget.javascript)) {
+        // Use require to load the javascript.
+        // Check asset mappings to make sure we are loading
+        // the correct version
+        var mappingBase = widget.jsPath() + '/';
+        var jsPath = widget.javascript();
+
+        if (widget.assetMappings) {
+          var mappingKey = '/js/' + widget.javascript() + '.js';
+          var mappingValue = widget.assetMappings[mappingKey];
+
+          if (mappingValue) {
+            var idx = mappingValue().lastIndexOf('/');
+            mappingBase = mappingValue().substring(0,idx);
+            jsPath = mappingValue();
+          }
+        }
+        // While loading the module thru require([],fn{}), require creates a module
+        //map with the url to load the module from, dependencies, and call back after
+        //loading the module.  During the migration from require 2.0.6 to require.js 2.1.10,
+        //it is observed that there is a delay of the 4 milliseconds added by require to load
+        //the dependencies as part of context.nextTick.and prepare the module map after
+        //that delay. This was creating the problem while loading the widgets as the delay
+        //overrides the base url for all the widgets. So we have to override the nextTick
+        //implementation to execute load immediately.
+        requirejs.s.contexts._.nextTick = function(fn){fn();}
+
+        var mapping = requirejs.s.contexts._.config.map ? requirejs.s.contexts._.config.map : {};
+
+        mapping[jsPath] = {};
+
+        // For widgets that contain multiple js files, we need to provide a mapping so that require knows to load it from the url specified in asset mappings
+        for (var asset in widget.assetMappings) {
+
+          // Just map js files that aren't the main widget js file
+          if (asset.indexOf('/js/') === 0 &amp;&amp; asset.indexOf(widget.javascript() + '.js') === -1) {
+            var extPos = asset.indexOf('.js');
+            var url = widget.assetMappings[asset]();
+            var moduleName = asset.substring(1, extPos);
+
+            mapping[jsPath][moduleName] = url;
+          }
+        }
+
+        require({baseUrl: mappingBase, map : mapping}, [jsPath], function(extensions) {
+          if(typeof extensions === 'function') {
+            extensions = extensions().bind(ko);
+          }
+          var key;
+          //For each property in the returned object copy it to the widget.
+          for(key in extensions) {
+            if(extensions.hasOwnProperty(key)) {
+              //If copying an observable, create a new observable.
+              if(ko.isObservable(extensions[key]) &amp;&amp; !ko.isComputed(extensions[key])) {
+                if(extensions[key].remove) {
+                  widget[key] = ko.observableArray(extensions[key]());
+                } else {
+                  widget[key] = ko.observable(extensions[key]());
+                }
+              } else {
+                widget[key] = extensions[key];
+              }
+            }
+          }
+          // Let the widget know that all its properties have been set
+          widget.allPropertiesSet(widget);
+          if (!extensions) {
+            ccLogger.warn("Failed to execute javascript for widget: " + widget.javascript());
+          }
+          //Run the onLoad function for the extended javascript
+          if(load &amp;&amp; extensions &amp;&amp; extensions.onLoad) {
+            extensions.onLoad(widget);
+          }
+
+          // Some things need i18n resources loaded first
+          if(load &amp;&amp; extensions &amp;&amp; extensions.resourcesLoaded) {
+            if(widget.resources()) {
+              extensions.resourcesLoaded(widget);
+            }
+
+            widget.resources.subscribe(function(resources) {
+              if(resources) {
+                // resource bundle has been loaded.
+                extensions.resourcesLoaded(widget);
+              }
+            });
+          }
+
+          // Mark as initialized
+          widget.initialized(true);
+          if (javascriptLoadedCallback)
+            javascriptLoadedCallback.call(this,widget);
+          // remove us from pending list
+          layoutContainer.pendingWidgets.remove(widget);
+          // Used to notify widget that it is about to be displayed on a page
+          if (widget.hasBeforeAppear())
+            $.Topic(PubSub.topicNames.PAGE_READY).subscribe(widget.maybeFireBeforeAppear.bind(widget));
+        });
+        //Reset the overridden behaviour so that loading behaviuour of other modules is not affected
+        requirejs.s.contexts._.nextTick = requirejs.nextTick;
+      } else {
+        layoutContainer.pendingWidgets.remove(widget);
+        // Mark as initialized
+        widget.initialized(true);
+      }
+    };
+
+      /**
+       * Convert an id and params map into an array key for caching.
+       * 
+       * @private
+       * @function
+       * @name LayoutContainer#idAndParamsToCacheKey
+       * @param {string} pId ID
+       * @param {Object} pParams Parameter object
+       * @returns pId if pParams is null, otherwise returns an Array containing pId and the values of param
+       *   keys PAGE_PARAM and DATA_ONLY if those keys exist in pParams.
+       */
+      LayoutContainer.prototype.idAndParamsToCacheKey = function(pId, pParams) {
+        if(pParams == null)
+          return pId;
+        var keyArray = new Array();
+        keyArray.push(pId);
+        if(pParams[CCConstants.PAGE_PARAM])
+          keyArray.push(pParams[CCConstants.PAGE_PARAM]);
+        if(pParams[CCConstants.DATA_ONLY])
+          keyArray.push(pParams[CCConstants.DATA_ONLY]);
+        return keyArray;
+      };
+
+      /**
+       * This method is executed when page is ready. This records the page view
+       * count and sends to the server and then calls the Visitor Id service if
+       * a visitorId doesn't exist.
+       * 
+       * @private
+       * @function
+       * @name LayoutContainer#pageReady
+       */
+      LayoutContainer.prototype.pageReady = function() {
+        var self = this;
+        if (!self.isServerSideProcess()) {
+          if (!self.isPreview) {
+            var pageViewEvent = pageViewTracker.createPageViewEvent(1);
+            pageViewTracker.recordPageChange(pageViewEvent);
+          }
+        }
+      };
+
+      /**
+       * Check whether a server side process (SEO Scheduler) generated the pages.
+       * 
+       * @function
+       * @name LayoutContainer#isServerSideProcess
+       * @returns {boolean} true if page was generated by a server side process, otherwise false.
+       */
+      LayoutContainer.prototype.isServerSideProcess = function() {
+        var isServerSide = false;
+        var url = window.location.href;
+        if (url.indexOf(CCConstants.SERVERSIDE_PROCESS_STRING) != -1) {
+          isServerSide = true;
+        }
+        return isServerSide;
+      };
+
+      /**
+       * Convert parameter data from the URL into an key/value object.
+       * 
+       * @private
+       * @function
+       * @name LayoutContainer#getParameterData
+       * @param {string} args String representation of URL parameters
+       * @returns {Object} Object where each URL parameter is converted to a key:value.
+       */
+      LayoutContainer.prototype.getParameterData = function(args) {
+        var param = args.split("&amp;");
+        var parameters = {};
+        for (var i = 0; i &lt; param.length; i++) {
+          var tempParam = param[i].split("=");
+          parameters[tempParam[0]] = tempParam[1];
+        }
+        return parameters;
+      };
+
+      /**
+       * Checkout for network errors and notify the user. E.g. This method is executed when user is
+       * not connected to internet.
+       * 
+       * @private
+       * @function
+       * @name LayoutContainer#networkError
+       */
+      LayoutContainer.prototype.networkError = function() {
+        var self = this;
+        self.networkErrorMessage = CCi18n.t(
+                'ns.common:resources.networkConnectivityError', {}
+              );
+        self.networkErrorReloadText = CCi18n.t(
+                'ns.common:resources.reloadPage', {}
+              );
+        $(window).scrollTop('0');
+        //To hide modals if any
+        $('.modal').modal('hide');
+        //To hide spinner if any
+        $('#loadingModal').hide();
+        $('body').removeClass('modal-open');
+        $('.modal-backdrop').remove();
+        notifier.sendTemplateInfo(CCConstants.LAYOUT_CONTAIER_ID, self, 'notificationsNetworkError');
+      };
+
+     /** Catches all the run time errors
+     * supported on browsers : Chrome 13+
+     * Firefox 6.0 Internet Explorer 5.5+
+     * Opera 11.60+ Safari 5.1+
+     *@param {String} errorMessage is the error message
+      @param {String} errorUrl where error was raised
+      @param {Number} errorLineNumber number where error was raised
+     */
+    window.onerror = function(errorMessage, errorUrl, errorLineNumber) {
+      $.Topic(PubSub.topicNames.ONERROR_EXCEPTION_HANDLER).publish(errorMessage,
+        errorUrl, errorLineNumber);
+    }
+
+    //--------------------------------------------------------------------
+    // Static member variables
+    //--------------------------------------------------------------------
+
+    /**
+     * The LayoutViewModel constructor to used to create layouts.
+     * @private
+     * @type {LayoutViewModel}
+     * @name LayoutContainer.LayoutViewModel
+     */
+    LayoutContainer.prototype.LayoutViewModel = LayoutViewModel;
+
+    /**
+     * The RegionViewModel constructor used to create regions.
+     * @private
+     * @type {RegionViewModel}
+     * @name LayoutContainer.RegionViewModel
+     */
+    LayoutContainer.prototype.RegionViewModel = RegionViewModel;
+
+    /**
+     * The WidgetViewModel constructor used to create widgets.
+     * @private
+     * @type {WidgetViewModel}
+     * @name LayoutContainer.WidgetViewModel
+     */
+    LayoutContainer.prototype.WidgetViewModel = WidgetViewModel;
+
+    /**
+     * The CartViewModel constructor used to create the cart.
+     * @private
+     * @type {CartViewModel}
+     * @name LayoutContainer.CartViewModel
+     */
+    LayoutContainer.prototype.CartViewModel = CartViewModel;
+
+    /**
+     * The OrderViewModel constructor used to create orders.
+     * @private
+     * @type {OrderViewModel}
+     * @name LayoutContainer.OrderViewModel
+     */
+    LayoutContainer.prototype.OrderViewModel = OrderViewModel;
+
+    /**
+     * The SearchViewModel constructor used to create searches.
+     * @private
+     * @type {SearchViewModel}
+     * @name LayoutContainer.SearchViewModel
+     */
+    LayoutContainer.prototype.SearchViewModel = SearchViewModel;
+
+    /**
+     * The ShippingMethodsViewModel constructor used to create a list of
+     * shipping methods.
+     * @private
+     * @type {ShippingMethodsViewModel}
+     * @name LayoutContainer.ShippingMethodsViewModel
+     */
+    LayoutContainer.prototype.ShippingMethodsViewModel = ShippingMethodsViewModel;
+
+    /**
+     * The PaymentDetails constructor used to create PaymentDetails 
+     * view model.
+     * @private
+     * @type {PaymentDetails}
+     * @name LayoutContainer.PaymentDetails
+     */
+    LayoutContainer.prototype.PaymentDetails = PaymentDetails;
+
+    /**
+     * The PaymentAuthResponseViewModel constructor used to create
+     * the payment authorization view model.
+     * @private
+     * @type {PaymentAuthResponseViewModel}
+     * @name LayoutContainer.PaymentAuthResponseViewModel
+     */
+    LayoutContainer.prototype.PaymentAuthResponseViewModel = PaymentAuthResponseViewModel;
+
+    /**
+     * The UserViewModel constructor used to create
+     * the user registration and login view model.
+     * @private
+     * @type {UserViewModel}
+     * @name LayoutContainer.UserViewModel
+     */
+    LayoutContainer.prototype.UserViewModel = UserViewModel;
+
+    /**
+     * The ProductViewModel constructor used to represent product.
+     * @private
+     * @type {ProductViewModel}
+     * @name LayoutContainer.ProductViewModel
+     */
+    LayoutContainer.prototype.ProductViewModel = ProductViewModel;
+    
+    /**
+     * The SpaceViewModel constructor used to represent your current Space.
+     * @private
+     * @type {SpaceViewModel}
+     * @name LayoutContainer.SpaceViewModel
+     */
+    LayoutContainer.prototype.SpaceViewModel = SpaceViewModel;
+
+    LayoutContainer.prototype.ServerData = ServerData;
+
+    /**
+     * The SiteViewModel constructor used to represent price list groups.
+     * @private
+     * @type {SiteViewModel}
+     * @name LayoutContainer.SiteViewModel
+     */
+    LayoutContainer.prototype.SiteViewModel = SiteViewModel;
+
+    return LayoutContainer;
+  }
+);
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Index</a></h2><h3>Modules</h3><ul><li><a href="module-ccKoErrorWrapper.html">ccKoErrorWrapper</a></li><li><a href="module-ccKoExtensions.html">ccKoExtensions</a></li></ul><h3>Classes</h3><ul><li><a href="Address.html">Address</a></li><li><a href="CartViewModel.html">CartViewModel</a></li><li><a href="DynamicProperty.html">DynamicProperty</a></li><li><a href="EventDispatcher.html">EventDispatcher</a></li><li><a href="GiftCardViewModel.html">GiftCardViewModel</a></li><li><a href="GiftProductListingViewModel.html">GiftProductListingViewModel</a></li><li><a href="ko.bindingHandlers.background.html">background</a></li><li><a href="ko.bindingHandlers.carouselSwipe.html">carouselSwipe</a></li><li><a href="ko.bindingHandlers.ccForm.html">ccForm</a></li><li><a href="ko.bindingHandlers.ccLink.html">ccLink</a></li><li><a href="ko.bindingHandlers.ccValidation.html">ccValidation</a></li><li><a href="ko.bindingHandlers.checkbox.html">checkbox</a></li><li><a href="ko.bindingHandlers.chosen.html">chosen</a></li><li><a href="ko.bindingHandlers.contextResourcesNamespace.html">contextResourcesNamespace</a></li><li><a href="ko.bindingHandlers.currency.html">currency</a></li><li><a href="ko.bindingHandlers.datepicker.html">datepicker</a></li><li><a href="ko.bindingHandlers.datepopover.html">datepopover</a></li><li><a href="ko.bindingHandlers.draggable.html">draggable</a></li><li><a href="ko.bindingHandlers.droppable.html">droppable</a></li><li><a href="ko.bindingHandlers.fade.html">fade</a></li><li><a href="ko.bindingHandlers.hover.html">hover</a></li><li><a href="ko.bindingHandlers.imageSource.html">imageSource</a></li><li><a href="ko.bindingHandlers.imageZoom.html">imageZoom</a></li><li><a href="ko.bindingHandlers.localeText.html">localeText</a></li><li><a href="ko.bindingHandlers.makeAccess.html">makeAccess</a></li><li><a href="ko.bindingHandlers.modal.html">modal</a></li><li><a href="ko.bindingHandlers.modalTabbingContraint.html">modalTabbingContraint</a></li><li><a href="ko.bindingHandlers.onRender.html">onRender</a></li><li><a href="ko.bindingHandlers.popeditor.html">popeditor</a></li><li><a href="ko.bindingHandlers.popover.html">popover</a></li><li><a href="ko.bindingHandlers.productImageSource.html">productImageSource</a></li><li><a href="ko.bindingHandlers.propertyEditor.html">propertyEditor</a></li><li><a href="ko.bindingHandlers.radio.html">radio</a></li><li><a href="ko.bindingHandlers.richTextEditor.html">richTextEditor</a></li><li><a href="ko.bindingHandlers.scrollAffix.html">scrollAffix</a></li><li><a href="ko.bindingHandlers.select2.html">select2</a></li><li><a href="ko.bindingHandlers.select2Tags.html">select2Tags</a></li><li><a href="ko.bindingHandlers.selectable.html">selectable</a></li><li><a href="ko.bindingHandlers.slickList.html">slickList</a></li><li><a href="ko.bindingHandlers.slide.html">slide</a></li><li><a href="ko.bindingHandlers.slider.html">slider</a></li><li><a href="ko.bindingHandlers.spectrum.html">spectrum</a></li><li><a href="ko.bindingHandlers.tagsInput.html">tagsInput</a></li><li><a href="ko.bindingHandlers.textCheck.html">textCheck</a></li><li><a href="ko.bindingHandlers.timepicker.html">timepicker</a></li><li><a href="ko.bindingHandlers.triggerMessage.html">triggerMessage</a></li><li><a href="ko.bindingHandlers.validatableTarget.html">validatableTarget</a></li><li><a href="ko.bindingHandlers.validatableValue.html">validatableValue</a></li><li><a href="ko.bindingHandlers.widgetLocaleText.html">widgetLocaleText</a></li><li><a href="koValidation.alphaNumeric.html">alphaNumeric</a></li><li><a href="koValidation.alphaNumericNoSpaces.html">alphaNumericNoSpaces</a></li><li><a href="koValidation.alphaNumericNoSpacesWithSeperators.html">alphaNumericNoSpacesWithSeperators</a></li><li><a href="koValidation.alphaNumericWithSeperators.html">alphaNumericWithSeperators</a></li><li><a href="koValidation.bool.html">bool</a></li><li><a href="koValidation.creditcard.html">creditcard</a></li><li><a href="koValidation.cvv.html">cvv</a></li><li><a href="koValidation.endmonth.html">endmonth</a></li><li><a href="koValidation.endyear.html">endyear</a></li><li><a href="koValidation.importFileName.html">importFileName</a></li><li><a href="koValidation.laterDate.html">laterDate</a></li><li><a href="koValidation.match.html">match</a></li><li><a href="koValidation.mediaZipFileName.html">mediaZipFileName</a></li><li><a href="koValidation.number.html">number</a></li><li><a href="koValidation.observablePattern.html">observablePattern</a></li><li><a href="koValidation.password.html">password</a></li><li><a href="koValidation.price.html">price</a></li><li><a href="koValidation.propertyIdAlreadyInUse.html">propertyIdAlreadyInUse</a></li><li><a href="koValidation.propertyNameAlreadyInUse.html">propertyNameAlreadyInUse</a></li><li><a href="koValidation.restrictSlashCharacters.html">restrictSlashCharacters</a></li><li><a href="koValidation.startmonth.html">startmonth</a></li><li><a href="koValidation.startyear.html">startyear</a></li><li><a href="koValidation.uniqueTrimmed.html">uniqueTrimmed</a></li><li><a href="koValidation.uniqueTrimmedCaseInsensitive.html">uniqueTrimmedCaseInsensitive</a></li><li><a href="koValidation.url.html">url</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.addTemplate.html">addTemplate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDate.html">ccDate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDateTime.html">ccDateTime</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccNumber.html">ccNumber</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.disabled.html">disabled</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.element.html">element</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.embeddedAssistance.html">embeddedAssistance</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.inTabFlow.html">inTabFlow</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.setContextVariable.html">setContextVariable</a></li><li><a href="NavStateViewModel.html">NavStateViewModel</a></li><li><a href="OrderHistoryViewModel.html">OrderHistoryViewModel</a></li><li><a href="OrderViewModel.html">OrderViewModel</a></li><li><a href="ParentOrganisation.html">ParentOrganisation</a></li><li><a href="ProductListingSearchViewModel.html">ProductListingSearchViewModel</a></li><li><a href="ProductListingViewModel.html">ProductListingViewModel</a></li><li><a href="ProductViewModel.html">ProductViewModel</a></li><li><a href="PubSub.topicNames.html">topicNames</a></li><li><a href="resetCVV.html">resetCVV</a></li><li><a href="resetPaymentDetails.html">resetPaymentDetails</a></li><li><a href="SearchRestClient.html">SearchRestClient</a></li><li><a href="UserViewModel.html">UserViewModel</a></li><li><a href="WidgetViewModel.html">WidgetViewModel</a></li><li><a href="WishlistContentViewModel.html">WishlistContentViewModel</a></li></ul><h3>Namespaces</h3><ul><li><a href="ko.bindingHandlers.html">bindingHandlers</a></li><li><a href="ko.extenders.html">extenders</a></li><li><a href="koValidation.html">koValidation</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CCEETagProcessor">CCEETagProcessor</a></li><li><a href="global.html#isValidDeterminewhetherornotthepaymentdetailsobjectisvalidbasedonthevalidityofitscomponentparts.Thiswillnotcauseerrormessagestobedisplayedforanyobservablevaluesthatareunchangedandhaveneverreceivedfocusontherelatedformfield(s).">isValid
+Determine whether or not the payment details object is valid
+based on the validity of its component parts. This will not
+cause error messages to be displayed for any observable values
+that are unchanged and have never received focus on the 
+related form field(s).</a></li><li><a href="global.html#validatePaymentDetailsForceallrelevantmemberobservablestoperformtheirvalidationnow&displaytheerrors(ifany)">validatePaymentDetails
+Force all relevant member observables to perform their
+validation now & display the errors (if any)</a></li></ul>
+</nav>
+
+<br clear="both">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0</a> on Mon Oct 10 2016 10:49:04 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Dynamo/Client/Store/web/store.war/js/main.js</title>
+    
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    
+    <h1 class="page-title">Source: Dynamo/Client/Store/web/store.war/js/main.js</h1>
+    
+    
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source"><code>/**
+ * @fileoverview The require.js main file for the storefront
+ *
+ *
+ */
+/*jslint plusplus: true */
+require.config({
+
+  /**
+   * Base URL for JavaScript references.
+   * @ignore
+   */
+  baseUrl: 'js',
+
+  /**
+    * Packages for CommonJS modules.
+    * http://requirejs.org/docs/api.html#packages
+    * @ignore
+    */
+  packages: [
+    "packageAce",
+    {
+      name: "packageAce",
+      location: "/shared/js/libs/ace",
+      main: "ace"
+    }
+  ],
+
+  /**
+   * Shim for any modules with dependencies that we need to explicitly define.
+   * @ignore
+   */
+  shim: {
+    'jqueryui': {
+      deps: ['jquery']
+    },
+
+    'jquerymobile': {
+      deps: ['jquery']
+    },
+
+    'jquery': {
+      deps: [],
+      exports: '$'
+    },
+
+    'trafficCop': {
+      deps: ['jquery']
+    },
+
+    'infuser': {
+      deps: ['jquery', 'trafficCop']
+    },
+
+    'spectrumColorPicker': {
+      deps: ['jquery']
+    },
+
+    'bootstrapDatePicker': {
+      deps: ['jquery']
+    },
+
+    'bootstrapTimePicker': {
+      deps: ['jquery']
+    },
+
+    'bootstrap': {
+      deps: ['jquery']
+    },
+
+    'bstypeahead': {
+      deps: ['jquery']
+    },
+
+    'tagsInput': {
+      deps: ['jquery']
+    },
+
+    'chosen': {
+      deps: ['jquery']
+    },
+
+    'viewportVisible': {
+      deps: ['jquery']
+    },
+
+    'imagesloaded': {
+      deps: ['jquery']
+    },
+    'facebook' : {
+      exports: 'FB'
+    }
+  },
+
+  /**
+   * paths to resolve the reference names names on the left will be used for
+   * requires/depends parameters.
+   * @ignore
+   */
+  paths : {
+    // 3rd party libs
+    // jquery
+    jqueryui : '/shared/js/libs/jquery-ui-1.11.4.custom.min',
+    jquerymswipe : '/shared/js/libs/jquery.mobile.swipe-1.4.5.min',
+    i18next : '/shared/js/libs/i18next.amd.withJQuery-1.7.4',
+    tagsInput : '/shared/js/libs/jquery.tagsinput-1.3.5',
+    chosen : '/shared/js/libs/chosen.jquery-1.4.2.min',
+    viewportVisible : '/shared/js/libs/jquery.visible.min',
+
+    // knockout, mapping, and templates
+    koMapping : '/shared/js/libs/knockout.mapping-2.4.1.min',
+    koValidate : '/shared/js/libs/knockout.validation-2.0.3',
+    trafficCop: '/shared/js/libs/TrafficCop',
+    infuser: '/shared/js/libs/infuser',
+
+    // bootstrap for most UI controls
+    bootstrap : '/shared/js/libs/bootstrap.3.1.1',
+    bootstrapDatePicker: '/shared/js/libs/bootstrap-datepicker',
+    bootstrapTimePicker: '/shared/js/libs/bootstrap-timepicker',
+    bootstrapSlider: '/shared/js/libs/bootstrap-slider',
+    spectrumColorPicker: '/shared/js/libs/spectrum-1.7.0',
+    bstypeahead: '/shared/js/libs/bootstrap3-typeahead',
+
+    // crossroads, etc,. for routing
+    crossroads : '/shared/js/libs/crossroads-0.12.0.min',
+    hasher : '/shared/js/libs/hasher-1.2.0',
+
+    // Moment library for date and time formatting
+    moment : '/shared/js/libs/moment-2.10.3',
+    // Moment language bundles are stored in this path
+    momentLangs : '/shared/js/libs/moment',
+
+    // Oracle-CC libs
+    profiletools: '/shared/js/ccLibs/profile-tools-1.0',
+    ccConstants : '/shared/js/ccLibs/cc-constants',
+    koExtensions : '/shared/js/ccLibs/ko-extensions',
+    storageApi : '/shared/js/ccLibs/cc-storage-api-1.0',
+    ccOAuthTimeout : '/shared/js/ccLibs/cc-oauth-timeout',
+    ccRestClientConstructor : '/shared/js/ccLibs/cc-rest-client-1.0',
+    ccRestClient : '/shared/js/ccLibs/storefront-rest-client',
+    koExternalTemplate: '/shared/js/ccLibs/koExternalTemplateEngine-amd-2.0.5-modified',
+    ccKoExtensions: '/shared/js/ccLibs/cc-ko-extensions',
+    ccKoErrorWrapper: '/shared/js/ccLibs/cc-ko-error-wrapper',
+    xDomainProxy: '/shared/js/ccLibs/xdomain-proxy',
+    pubsub: '/shared/js/ccLibs/pubsub-1.0',
+    pubsubImpl: '/shared/js/ccLibs/pubsub-impl',
+    routing: '/shared/js/ccLibs/routing-2.0',
+    notifier: '/shared/js/ccLibs/notifier-1.0',
+    notifications: '/shared/js/ccLibs/notifications-1.0',
+    storeKoExtensions: '/shared/js/ccLibs/store-ko-extensions',
+    ccLogger: '/shared/js/ccLibs/ccLogger-1.0',
+    CCi18n : '/shared/js/ccLibs/cc-i18n',
+    ccKoValidateRules: '/shared/js/ccLibs/cc-ko-validate-rules',
+    paginated: '/shared/js/ccLibs/paginated',
+    ccPaginated: '/shared/js/ccLibs/cc-paginated',
+    spinner: '/shared/js/ccLibs/spinner-1.0',
+    placeholderPatch : '/shared/js/libs/jquery.placeholderpatch-1.2.0',
+    imagesloaded : '/shared/js/libs/imagesloaded.pkgd-3.1.8',
+    ccDate : '/shared/js/ccLibs/cc-date-format-1.0',
+    ccNumber : '/shared/js/ccLibs/cc-number-format-1.0',
+    ccPasswordValidator : '/shared/js/ccLibs/cc-password-validator',
+    swmRestClientConstructor: '/shared/js/ccLibs/swm-rest-client-1.0',
+    swmRestClient: '/shared/js/ccLibs/swm-storefront-rest-client',
+    swmKoValidateRules: '/shared/js/ccLibs/swm-ko-validate-rules',
+    ccResourceLoader: '/shared/js/ccLibs/cc-resource-loader',
+    navigation : '/shared/js/ccLibs/cc-navigation-1.0',
+    ccNavState : '/shared/js/ccLibs/cc-nav-state',
+    facebook: ['//connect.facebook.net/en_US/sdk', '/shared/js/ccLibs/load-facebookjs-error-handler-1.0'],
+    facebookjs : '/shared/js/ccLibs/facebook_sdk',
+    pinitjs : '/shared/js/ccLibs/pinit_sdk',
+    imageZoom : '/shared/js/ccLibs/image-zoom',
+    ccImageZoom : '/shared/js/ccLibs/cc-image-zoom-2.0',
+    pageViewTracker : '/shared/js/ccLibs/pageViewTracker-1.0',
+    currencyHelper : '/shared/js/ccLibs/currency-helper',
+    profileHelper: '/shared/js/ccLibs/profile-helper',
+    ccEETagProcessor : '/shared/js/ccLibs/cc-ee-tag-processor-1.0',
+    viewportHelper : '/shared/js/ccLibs/viewport-helper',
+    parentOrganisation: '/shared/js/ccLibs/parentOrganisation',
+    ccClientErrorCodes: '/shared/js/ccLibs/cc-client-error-codes',
+    sfExceptionHandler : '/shared/js/ccLibs/sf-exception-handler',
+    ccStoreServerLogger : '/shared/js/ccLibs/cc-store-server-logger-1.0',
+    dateTimeUtils : '/shared/js/ccLibs/date-time-utils',
+    numberFormatHelper : '/shared/js/ccLibs/number-format-helper',
+
+    // OracleJET v2.0.2
+    hammerjs: '/js/oraclejet/js/libs/hammer/hammer-2.0.4.min',
+    jquery: '/js/oraclejet/js/libs/jquery/jquery-2.1.3.min',
+    'jqueryui-amd': '/js/oraclejet/js/libs/jquery/jqueryui-amd-1.11.4.min',
+    knockout: '/js/oraclejet/js/libs/knockout/knockout-3.4.0',
+    ojdnd: '/js/oraclejet/js/libs/dnd-polyfill/dnd-polyfill-1.0.0.min',
+    ojs: '/js/oraclejet/js/libs/oj/v2.0.2/min',
+    ojL10n: '/js/oraclejet/js/libs/oj/v2.0.2/ojL10n',
+    ojtranslations: '/js/oraclejet/js/libs/oj/v2.0.2/resources',
+    promise: '/js/oraclejet/js/libs/es6-promise/promise-1.0.0.min',
+    signals: '/js/oraclejet/js/libs/js-signals/signals.min',
+    template: '/js/oraclejet/js/libs/require/text',
+
+    // Dynamic paths to make naming/referencing modules easier
+    pageLayout: '/shared/js/pageLayout',
+    viewModels: '/shared/js/viewModels',
+    shared: '/shared/js'
+  },
+
+  // wait 45 seconds before giving up loading a script
+  // extended from 7 (default) to permit all dependencies to load
+  waitSeconds: 45
+});
+
+// Allow SiteStudio to configure paths as required
+var paths = { layoutContainer : 'pageLayout/layout-container' };
+
+if(typeof(configurePaths) === 'function') {
+  configurePaths(paths);
+}
+
+if (typeof container === 'undefined') {
+  var container;
+}
+
+require(['shared/store-libs'], function() {
+  require(
+    ['jquery',
+     'ccConstants',
+     'spinner',
+     'pubsub',
+     'profiletools',
+     'knockout',
+     'koValidate',
+     'ccKoValidateRules',
+     paths.layoutContainer,
+     'pageLayout/rest-adapter',
+     'pageLayout/api-builder',
+     'routing',
+     'CCi18n',
+     'ccLogger',
+     'ccDate',
+     'ccEETagProcessor',
+     'ccRestClient',
+     'ccOAuthTimeout',
+     'viewportHelper',
+     'shared/store-loader',
+     'ccResourceLoader!APPLICATION_JS'],
+
+    function ($, CCConstants, Spinner, PubSub, ProfileTools, ko, koValidate,
+               rules, LayoutContainer, MyRestAdapter, APIBuilder, Routing, CCi18n, log,
+               ccDate, ccEETagProcessor, ccRestClient, CCOAuthTimeout, viewportHelper) {
+      "use strict";
+
+      // Check to see if we are in the Design Studio preview
+      if (container === CCConstants.CONTAINER_DESIGN_STUDIO) {
+        // We are in the Design Studio preview so set up the loading spinner
+        var spinnerVisible = false;
+        var pageReady = false;
+
+        // Event fired when page is changed
+        $.Topic(PubSub.topicNames.PAGE_CHANGED).subscribe(function() {
+          if (!spinnerVisible &amp;&amp; !pageReady) {
+            Spinner.createWithTimeout({
+              parent: 'body',
+              posTop: '200px'
+            }, 10000,
+            function() {
+              $('.modal-backdrop').remove();
+            });
+            
+            $('.cc-spinner').css('z-index', '20000');
+
+            // Signal that the spinner must be removed when the page is loaded
+            spinnerVisible = true;
+          }
+
+          // Reset pageReady to initial state
+          pageReady = false;
+        });
+
+        // Event fired when new page is ready
+        $.Topic(PubSub.topicNames.PAGE_READY).subscribe(function() {
+          if (spinnerVisible) {
+            Spinner.destroyWithoutDelay('body');
+
+            // Reset spinnerVisible and pageReady to initial state
+            spinnerVisible = false;
+            pageReady = false;
+          }
+          else {
+            // Signal that page is ready and there is no need to show the spinner
+            pageReady = true;
+          }
+        });
+        // Make sure that the EE libs do not work in DS
+        ccEETagProcessor.enabled = false;
+      }
+
+      //---------------------------------------------------------------
+      // CONFIGURE VIEW MODEL PATHS
+      //---------------------------------------------------------------
+      var adapter = new MyRestAdapter('/ccstore/v1/'),
+          basePath = "/",
+          layoutContainer = new LayoutContainer(adapter,basePath),
+          masterViewModel = new layoutContainer.LayoutViewModel(),
+          routing = new Routing(),
+          ccOAuthTimeout = new CCOAuthTimeout(ccRestClient);
+
+      // Initialize the EE tag library
+      ccEETagProcessor.init();
+
+      // Change the default template suffix for storefront
+      infuser.defaults.templateSuffix = '';
+      // Configuration Options for Validation Plugin
+      // See https://github.com/ericmbarnard/Knockout-Validation/wiki/Configuration
+      var options = {};
+      options.errorsAsTitle = false;
+      options.insertMessages = false;
+      options.decorateElement = true;
+      options.errorElementClass = "invalid";
+
+      // Initialize Validation Plugin
+      ko.validation.init(options);
+
+      // set the i18next and load the common name space
+      var i18nOptions = {
+        ns : {
+          namespaces : ['ns.common','ns.ccformats'],
+          defaultNs : 'ns.common'
+        },
+        fallbackLng : 'en',
+        useLocalStorage : false,
+        useCookie : false,
+        debug : false,
+        resGetPath: '/ccstoreui/v1/resources/__ns__?locale=__lng__',
+        customLoad: CCi18n.loadResources
+      };
+
+      // initialise i18next with the options at some point in the future
+      // after we know the correct locale. Otherwise we'll end up
+      // loading resource bundles twice. Once at init and once again
+      // at setLocale time. Better to just wait and do the init
+      // when we know what the locale is (this comes from the server)
+
+      CCi18n.deferInit(i18nOptions, function() {
+        log.info("main.js initialized CCi18n " + i18nOptions['fallbackLng']);
+
+        // Initialize preview message
+        masterViewModel.previewMessage(
+          CCi18n.t('ns.common:resources.previewMessage'));
+        masterViewModel.sharedWidgetMessage(
+          CCi18n.t('ns.common:resources.sharedWidget'));
+        masterViewModel.displayErrorMessage(
+          CCi18n.t('ns.common:resources.displayError'));
+        if (masterViewModel.pageChangeMessage() == "") {
+          if (masterViewModel.dataForPageChangeMessage().page.category) {
+               masterViewModel.pageChangeMessage(CCi18n.t(
+                 'ns.common:resources.categoryPageLoadedText',
+                  {
+                     collection: masterViewModel.dataForPageChangeMessage().page.category.displayName
+                  }));
+          } else if (masterViewModel.dataForPageChangeMessage().page.product) {
+              masterViewModel.pageChangeMessage(CCi18n.t(
+                'ns.common:resources.productPageLoadedText',
+                {
+                  product: masterViewModel.dataForPageChangeMessage().page.product.displayName
+                }));
+          } else if (masterViewModel.dataForPageChangeMessage().page.repositoryId === "userSpacesPage") {
+              masterViewModel.pageChangeMessage(CCi18n.t('ns.common:resources.wishlistPageLoadedText'));
+          }  else if (masterViewModel.dataForPageChangeMessage().repositoryId != "searchResultsPage") {
+               masterViewModel.pageChangeMessage(CCi18n.t(
+                 'ns.common:resources.pageLoadedText',
+                 {
+                    page: masterViewModel.dataForPageChangeMessage().page.repositoryId
+                 }));
+          }
+        }
+      });
+
+
+      /**
+       * Returns true if the given regions refer to widgets with different typeIds.
+       * This is *not* an object comparison, it's only comparing the typeId property
+       * of the widget contained in each region.
+       **/
+      function regionsDiffer(regionA,regionB) {
+        if (!regionA || !regionB) return true;
+
+        if(regionA.widgets()) {
+          if(regionB.widgets()) {
+            if(regionA.widgets().length !== regionB.widgets().length) {
+              return true;
+            }
+
+            if(regionA.width() !== regionB.width()) {
+              return true;
+            }
+
+            for(var i = 0; i &lt; regionA.widgets().length; i++) {
+              if(ko.utils.unwrapObservable(regionA.widgets()[i].id) !== ko.utils.unwrapObservable(regionB.widgets()[i].id)) {
+                return true;
+              }
+            }
+
+            return false;
+          }
+          return true;
+        }
+
+        if(regionB.widgets()) {
+          return true;
+        }
+
+        return false;
+      }
+
+      /**
+       * Returns the index of the given region in the given list of regions
+       */
+      function findRegion(region,regionsList) {
+        var result = -1;
+        for (var i = 0; i &lt; regionsList.length; i++) {
+          if (!regionsDiffer(region,regionsList[i])) {
+            result = i;
+            break;
+          }
+        }
+        return result;
+      }
+
+      // Updates the master view model when we new layout has been loaded
+      // Favors keeping references to the same RegionViewModel
+      // object when possible (ex: header and footer on all pages)
+      // so that the knckout foreach binding can detect and
+      // optimize to avoid redrawing the entire page
+      var updateModel = function (args, eventData) {
+        var currentRegions = masterViewModel.regions(),
+            newRegions = args.regions(),
+            i = 0;
+        // make them the same length
+        currentRegions.length = newRegions.length;
+        var pendingRegions = new Array(currentRegions.length);
+        for (i = 0 ; i &lt; currentRegions.length ; i++ ) {
+          if (regionsDiffer(currentRegions[i],newRegions[i])) {
+            // check if the current region can be re-used again
+            // if so we'll save it for later in pendingRegions
+            var idx = findRegion(currentRegions[i],newRegions);
+            if (idx != -1) {
+              // Save away our pending move
+              pendingRegions[idx] = currentRegions[i];
+            }
+            // Update the current region to match the new list
+            currentRegions[i] = newRegions[i];
+          }
+        }
+        // Make pending changes
+        for (i = 0; i &lt; pendingRegions.length ; i++) {
+          // if its not undefined, set it on the final array
+          if (pendingRegions[i] !== undefined) {
+            currentRegions[i] = pendingRegions[i];
+          }
+        }
+        // Let knockout know we have updated the array
+        masterViewModel.regions.valueHasMutated();
+        updateMetadata(args);
+        
+        // Notify subscribers that the layout has been updated. Publish the page data and event data that caused the update.
+        $.Topic(PubSub.topicNames.PAGE_LAYOUT_UPDATED).publish(args, eventData);
+
+        //update the page change message
+        if (args.data.page.category) {
+          masterViewModel.pageChangeMessage(CCi18n.t(
+            'ns.common:resources.categoryPageLoadedText',
+            {
+               collection: args.data.page.category.displayName
+             }));
+        } else if (args.data.page.product) {
+            masterViewModel.pageChangeMessage(CCi18n.t(
+              'ns.common:resources.productPageLoadedText',
+              {
+                product: args.data.page.product.displayName
+              }));
+        } else if (args.data.page.repositoryId === "userSpacesPage") {
+            masterViewModel.pageChangeMessage(CCi18n.t('ns.common:resources.wishlistPageLoadedText'));
+        }  else if (args.data.page.repositoryId != "searchResultsPage") {
+            masterViewModel.pageChangeMessage(CCi18n.t(
+              'ns.common:resources.pageLoadedText',
+              {
+                page: args.data.page.repositoryId
+              }));
+        }
+        if (masterViewModel.pageChangeMessage() === "") {
+          masterViewModel.dataForPageChangeMessage(args.data);
+        }
+      };
+
+      var host = window.location.protocol + "//" + window.location.host;
+      /**
+       * Updates observables containing SEO rel tags data.
+       * 
+       * @param {args} server JSON response
+       * @param {data} PAGE_LAYOUT_UPDATED event data
+       */
+      var handleLayoutUpdate = function(args, data) {
+        var route;
+        var supportedLocales = ko.observableArray();
+        
+        // the server decides which pages should contain the canonical tag
+        if (args.canonicalRoute &amp;&amp; args.canonicalRoute()) {
+          var locales = args.data.global.site.additionalLanguages;
+          var defaultLocale = locales[locales.length - 1].name;
+          var currentLocale = args.data.global.locale;
+          var canonicalRoute = args.canonicalRoute();
+          
+          if (currentLocale === defaultLocale) {
+            route = host + canonicalRoute;
+          } else {
+            route = host + "/" + currentLocale + canonicalRoute;
+          }
+
+          if (locales.length > 1) {
+            // add all languages but the last (the default one)
+            for (var i=0; i &lt; locales.length - 1; i++) {
+              supportedLocales.push({
+                hreflang: locales[i].name.replace("_", "-"),
+                href: host + "/" + locales[i].name + canonicalRoute
+              });
+            }
+
+            // add default language without locale info in url
+            supportedLocales.push({
+              hreflang: defaultLocale.replace("_", "-"),
+              href: host + canonicalRoute
+            });
+            supportedLocales.push({
+              hreflang: "x-default",
+              href: host + canonicalRoute
+            });
+          }
+        }
+        
+        masterViewModel.supportedLocales(supportedLocales());
+        masterViewModel.canonicalRoute(route);
+        // the pagination values are calculated in ProductListingViewModel
+        // but need to be cleared here for pages without pagination
+        masterViewModel.nextPageNo(null);
+        masterViewModel.prevPageNo(null);
+        masterViewModel.currPageNo('');
+        masterViewModel.paginationDone(false);
+      };
+      /**
+       * Updates observables containing SEO pagination data.
+       * 
+       * @param {data} PAGE_PAGINATION_CALCULATED event data
+       */
+      var handlePaginationCalculated = function(data) {
+        masterViewModel.nextPageNo(data.nextPageNo);
+        masterViewModel.prevPageNo(data.prevPageNo);
+        masterViewModel.currPageNo(data.currPageNo);
+        masterViewModel.paginationDone(true);
+        console.log('>> pagination calculated');
+      };
+
+      // Updates the master view model when we new layout has been loaded
+      // Favors keeping references to the same RegionViewModel
+      // object when possible (ex: header and footer on all pages)
+      // so that the knckout foreach binding can detect and
+      // optimize to avoid redrawing the entire page
+      var updateMetadata = function(args) {
+        masterViewModel.title(args.title());
+        masterViewModel.keywords(args.keywords());
+        masterViewModel.description(args.description());
+        masterViewModel.metaTags(args.metaTags());
+        masterViewModel.isPreview(args.isPreview());
+        viewportHelper.layoutViewports(args.viewports ? args.viewports() : "");
+      };
+
+      // Subscribe to LAYOUT_LOADED messages so we can update the view model
+      $.Topic(PubSub.topicNames.PAGE_LAYOUT_LOADED).subscribe(updateModel);
+      $.Topic(PubSub.topicNames.PAGE_LAYOUT_UPDATED).subscribe(handleLayoutUpdate);
+      $.Topic(PubSub.topicNames.PAGE_PAGINATION_CALCULATED).subscribe(handlePaginationCalculated);
+      $.Topic(PubSub.topicNames.PAGE_METADATA_CHANGED).subscribe(updateMetadata);
+      $.Topic(PubSub.topicNames.PAGE_LAYOUT_SERVER_ERROR).subscribe(
+        function (result) {
+          $('#errorModal').modal('show');
+        }
+      );
+
+      masterViewModel.name = ko.observable('Master View Model');
+      masterViewModel.itemBeforeRemove = function (dom,index,removed) {
+        //$(dom).fadeOut(500, function() { $(dom).remove(); });
+        $(dom).remove();
+        log.info("beforeRemove " + dom + " index " + index + " removed " + removed);
+      };
+
+      masterViewModel.itemAfterAdd = function (dom, index, added) {
+        log.info("afterAdd " + dom + " index " + index + " added " + added);
+        // $(dom).fadeIn();
+      };
+
+      masterViewModel.afterRender = function (inserted, dataItem) {
+        log.info("afterRender " + inserted +  " " + dataItem);
+      };
+
+      APIBuilder.widgetBuilder(layoutContainer.WidgetViewModel, layoutContainer);
+      APIBuilder.regionBuilder(layoutContainer.RegionViewModel, layoutContainer);
+
+      // Register Common Component Instances
+      layoutContainer.WidgetViewModel.prototype.profileTools = new ProfileTools();
+      
+      ko.applyBindings(masterViewModel, document.getElementById("oracle-cc"));
+
+      if (typeof(waitForRenderComplete) === 'function') {
+        waitForRenderComplete(ko, layoutContainer, masterViewModel);
+      }
+    } // require/function
+  ); // require
+});
+
+
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Index</a></h2><h3>Modules</h3><ul><li><a href="module-ccKoErrorWrapper.html">ccKoErrorWrapper</a></li><li><a href="module-ccKoExtensions.html">ccKoExtensions</a></li></ul><h3>Classes</h3><ul><li><a href="Address.html">Address</a></li><li><a href="CartViewModel.html">CartViewModel</a></li><li><a href="DynamicProperty.html">DynamicProperty</a></li><li><a href="EventDispatcher.html">EventDispatcher</a></li><li><a href="GiftCardViewModel.html">GiftCardViewModel</a></li><li><a href="GiftProductListingViewModel.html">GiftProductListingViewModel</a></li><li><a href="ko.bindingHandlers.background.html">background</a></li><li><a href="ko.bindingHandlers.carouselSwipe.html">carouselSwipe</a></li><li><a href="ko.bindingHandlers.ccForm.html">ccForm</a></li><li><a href="ko.bindingHandlers.ccLink.html">ccLink</a></li><li><a href="ko.bindingHandlers.ccValidation.html">ccValidation</a></li><li><a href="ko.bindingHandlers.checkbox.html">checkbox</a></li><li><a href="ko.bindingHandlers.chosen.html">chosen</a></li><li><a href="ko.bindingHandlers.contextResourcesNamespace.html">contextResourcesNamespace</a></li><li><a href="ko.bindingHandlers.currency.html">currency</a></li><li><a href="ko.bindingHandlers.datepicker.html">datepicker</a></li><li><a href="ko.bindingHandlers.datepopover.html">datepopover</a></li><li><a href="ko.bindingHandlers.draggable.html">draggable</a></li><li><a href="ko.bindingHandlers.droppable.html">droppable</a></li><li><a href="ko.bindingHandlers.fade.html">fade</a></li><li><a href="ko.bindingHandlers.hover.html">hover</a></li><li><a href="ko.bindingHandlers.imageSource.html">imageSource</a></li><li><a href="ko.bindingHandlers.imageZoom.html">imageZoom</a></li><li><a href="ko.bindingHandlers.localeText.html">localeText</a></li><li><a href="ko.bindingHandlers.makeAccess.html">makeAccess</a></li><li><a href="ko.bindingHandlers.modal.html">modal</a></li><li><a href="ko.bindingHandlers.modalTabbingContraint.html">modalTabbingContraint</a></li><li><a href="ko.bindingHandlers.onRender.html">onRender</a></li><li><a href="ko.bindingHandlers.popeditor.html">popeditor</a></li><li><a href="ko.bindingHandlers.popover.html">popover</a></li><li><a href="ko.bindingHandlers.productImageSource.html">productImageSource</a></li><li><a href="ko.bindingHandlers.propertyEditor.html">propertyEditor</a></li><li><a href="ko.bindingHandlers.radio.html">radio</a></li><li><a href="ko.bindingHandlers.richTextEditor.html">richTextEditor</a></li><li><a href="ko.bindingHandlers.scrollAffix.html">scrollAffix</a></li><li><a href="ko.bindingHandlers.select2.html">select2</a></li><li><a href="ko.bindingHandlers.select2Tags.html">select2Tags</a></li><li><a href="ko.bindingHandlers.selectable.html">selectable</a></li><li><a href="ko.bindingHandlers.slickList.html">slickList</a></li><li><a href="ko.bindingHandlers.slide.html">slide</a></li><li><a href="ko.bindingHandlers.slider.html">slider</a></li><li><a href="ko.bindingHandlers.spectrum.html">spectrum</a></li><li><a href="ko.bindingHandlers.tagsInput.html">tagsInput</a></li><li><a href="ko.bindingHandlers.textCheck.html">textCheck</a></li><li><a href="ko.bindingHandlers.timepicker.html">timepicker</a></li><li><a href="ko.bindingHandlers.triggerMessage.html">triggerMessage</a></li><li><a href="ko.bindingHandlers.validatableTarget.html">validatableTarget</a></li><li><a href="ko.bindingHandlers.validatableValue.html">validatableValue</a></li><li><a href="ko.bindingHandlers.widgetLocaleText.html">widgetLocaleText</a></li><li><a href="koValidation.alphaNumeric.html">alphaNumeric</a></li><li><a href="koValidation.alphaNumericNoSpaces.html">alphaNumericNoSpaces</a></li><li><a href="koValidation.alphaNumericNoSpacesWithSeperators.html">alphaNumericNoSpacesWithSeperators</a></li><li><a href="koValidation.alphaNumericWithSeperators.html">alphaNumericWithSeperators</a></li><li><a href="koValidation.bool.html">bool</a></li><li><a href="koValidation.creditcard.html">creditcard</a></li><li><a href="koValidation.cvv.html">cvv</a></li><li><a href="koValidation.endmonth.html">endmonth</a></li><li><a href="koValidation.endyear.html">endyear</a></li><li><a href="koValidation.importFileName.html">importFileName</a></li><li><a href="koValidation.laterDate.html">laterDate</a></li><li><a href="koValidation.match.html">match</a></li><li><a href="koValidation.mediaZipFileName.html">mediaZipFileName</a></li><li><a href="koValidation.number.html">number</a></li><li><a href="koValidation.observablePattern.html">observablePattern</a></li><li><a href="koValidation.password.html">password</a></li><li><a href="koValidation.price.html">price</a></li><li><a href="koValidation.propertyIdAlreadyInUse.html">propertyIdAlreadyInUse</a></li><li><a href="koValidation.propertyNameAlreadyInUse.html">propertyNameAlreadyInUse</a></li><li><a href="koValidation.restrictSlashCharacters.html">restrictSlashCharacters</a></li><li><a href="koValidation.startmonth.html">startmonth</a></li><li><a href="koValidation.startyear.html">startyear</a></li><li><a href="koValidation.uniqueTrimmed.html">uniqueTrimmed</a></li><li><a href="koValidation.uniqueTrimmedCaseInsensitive.html">uniqueTrimmedCaseInsensitive</a></li><li><a href="koValidation.url.html">url</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.addTemplate.html">addTemplate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDate.html">ccDate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDateTime.html">ccDateTime</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccNumber.html">ccNumber</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.disabled.html">disabled</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.element.html">element</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.embeddedAssistance.html">embeddedAssistance</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.inTabFlow.html">inTabFlow</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.setContextVariable.html">setContextVariable</a></li><li><a href="NavStateViewModel.html">NavStateViewModel</a></li><li><a href="OrderHistoryViewModel.html">OrderHistoryViewModel</a></li><li><a href="OrderViewModel.html">OrderViewModel</a></li><li><a href="ParentOrganisation.html">ParentOrganisation</a></li><li><a href="ProductListingSearchViewModel.html">ProductListingSearchViewModel</a></li><li><a href="ProductListingViewModel.html">ProductListingViewModel</a></li><li><a href="ProductViewModel.html">ProductViewModel</a></li><li><a href="PubSub.topicNames.html">topicNames</a></li><li><a href="resetCVV.html">resetCVV</a></li><li><a href="resetPaymentDetails.html">resetPaymentDetails</a></li><li><a href="SearchRestClient.html">SearchRestClient</a></li><li><a href="UserViewModel.html">UserViewModel</a></li><li><a href="WidgetViewModel.html">WidgetViewModel</a></li><li><a href="WishlistContentViewModel.html">WishlistContentViewModel</a></li></ul><h3>Namespaces</h3><ul><li><a href="ko.bindingHandlers.html">bindingHandlers</a></li><li><a href="ko.extenders.html">extenders</a></li><li><a href="koValidation.html">koValidation</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CCEETagProcessor">CCEETagProcessor</a></li><li><a href="global.html#isValidDeterminewhetherornotthepaymentdetailsobjectisvalidbasedonthevalidityofitscomponentparts.Thiswillnotcauseerrormessagestobedisplayedforanyobservablevaluesthatareunchangedandhaveneverreceivedfocusontherelatedformfield(s).">isValid
+Determine whether or not the payment details object is valid
+based on the validity of its component parts. This will not
+cause error messages to be displayed for any observable values
+that are unchanged and have never received focus on the 
+related form field(s).</a></li><li><a href="global.html#validatePaymentDetailsForceallrelevantmemberobservablestoperformtheirvalidationnow&displaytheerrors(ifany)">validatePaymentDetails
+Force all relevant member observables to perform their
+validation now & display the errors (if any)</a></li></ul>
+</nav>
+
+<br clear="both">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0</a> on Mon Oct 10 2016 10:49:03 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

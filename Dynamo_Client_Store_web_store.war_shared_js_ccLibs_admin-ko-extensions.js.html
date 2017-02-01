@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Dynamo/Client/Store/web/store.war/shared/js/ccLibs/admin-ko-extensions.js</title>
+    
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    
+    <h1 class="page-title">Source: Dynamo/Client/Store/web/store.war/shared/js/ccLibs/admin-ko-extensions.js</h1>
+    
+    
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source"><code>/**
+ * @fileoverview Includes knockout extensions that contain logic specific
+ * to admin functionality. Any extensions that require knowledge
+ * about admin functionality should go here. Other extensions
+ * live under store-ko-extensions.js, cc-ko-extensions.js &amp; ko-extensions.js
+ *
+ *
+ */
+/*global $, CKEDITOR */
+define(
+  //-------------------------------------------------------------------
+  // PACKAGE NAME
+  //-------------------------------------------------------------------
+  'adminKoExtensions',
+
+  //-------------------------------------------------------------------
+  // DEPENDENCIES
+  //-------------------------------------------------------------------
+  [ 'knockout',
+    'ccLogger',
+    'CCi18n',
+    'ccConstants',
+    'admin/util/utils',
+    'pubsub',
+    'profileHelper',
+    'slickGrid',
+    'ckeditor',
+    'ckadapter'
+  ],
+
+  //-------------------------------------------------------------------
+  // MODULE DEFINITION
+  //-------------------------------------------------------------------
+  function (ko,
+            CCLogger,
+            CCi18n,
+            CCConstants,
+            Utils,
+            PubSub,
+            profileHelper) {
+
+  "use strict";
+
+  // --------------------------------------------------------------
+  // Slick Grid
+  // --------------------------------------------------------------
+  (function () {
+
+    var selected = null;
+    var collapseItemText = null;
+    var selectItemText = null;
+    var editItemText = null;
+
+    // default table skinning method. Can be overridden by passing a formatter
+    //property to the binding
+    var TaskNameFormatter = function(template) {
+      var result = function(row, cell, value, columnDef, dataContext) {
+        var altReaderText;
+        var compiledTemplate = Utils.tmpl(template)(dataContext);
+        var displayName = dataContext.displayName;
+        var itemRow = $(compiledTemplate);
+        itemRow.css("padding-left", 5 * (dataContext.depth - 1) + "px");
+        itemRow.attr("class", "cc-navgrid-row cc-nestedSortable-leaf");
+
+        var itemRowInner = itemRow.find("div:first");
+        if (selected == dataContext.id) {
+          itemRowInner.addClass("cc-navgrid-active");
+        }
+
+        // folder icons
+        var collapse = itemRowInner.find(".cc-collapse");
+        collapse.attr({
+          //alt: CCi18n.t('ns.common:resources.expandGroup'),
+          "href": "javascript:void(0);",
+          "class": "cc-collapse toggle"
+        });
+
+
+        if(collapseItemText) {
+          altReaderText = CCi18n.t(collapseItemText, {'displayName': displayName});
+          collapse.prepend($('&lt;span class="cc-reader-text">').text(altReaderText));
+        }
+
+        var itemLink = itemRowInner.find(".cc-navgrid-link");
+        itemLink.attr("id", "cc-navGrid-" + dataContext.id);
+        itemLink.attr("href", "#");
+        itemLink.attr("title", displayName);
+        itemLink.attr("alt", displayName);
+        itemLink.attr("class", "cc-navgrid-link cc-text-overflow");
+        itemLink.attr("data-context-id", dataContext.id);
+        itemLink.text(displayName ? displayName : '(' + dataContext.id + ')');
+
+        if(selectItemText) {
+          altReaderText = CCi18n.t(selectItemText, {'displayName': displayName});
+          itemLink.prepend($('&lt;span class="cc-reader-text">').text(altReaderText));
+        }
+
+        var edit = itemRowInner.find(".cc-navgrid-edit");
+        edit.attr("href", "#");
+        edit.attr("data-keyboard", "true");
+
+        if(editItemText) {
+          CCi18n.t(editItemText, {'displayName': displayName});
+          edit.prepend($('&lt;span class="cc-reader-text">').text(altReaderText));
+        }
+
+        return $("&lt;div>").append(itemRow).html();
+      };
+
+      /**
+       * Sets the selected element.
+       */
+      result.setSelected = function(value) {
+        selected = value;
+      };
+
+      /**
+       * Sets accessibility text options for various parts of the slick list.
+       */
+      result.setReaderText = function(newCollapseItemText, newSelectItemText, newEditItemText) {
+        collapseItemText = newCollapseItemText;
+        selectItemText = newSelectItemText;
+        editItemText = newEditItemText;
+      };
+
+      return result;
+    };
+
+    /**
+     * The slicklist binding handler uses slick grid (&lt;a href="http://github.com/mleibman/slickgrid">http://github.com/mleibman/slickgrid&lt;/a>) 
+     * to display a one column tree structure
+     * that scales to large data by reusing rather than recreating DOM elements.
+     * Wrapped here in a function to descope some slick list specific variables from the rest
+     * of the admin binding handlers.
+     *
+     * Wrapping also allows an easy way to pass some additional information to the task
+     * formatter that is needed when rendering lists in a generic way.
+     * 
+     * @public
+     * @class slicklist provides a scalable list binding for large data sets based on slickgrid.
+     *
+     * @name ko.bindingHandlers.slickList
+     * @example
+     * &amp;lt;div id="navGrid" data-bind="slickList: {template: 'promotion_nav_template',
+     *   handler: selectPromotion.bind($data), 
+     *   selected: selectedPromotion, items: promotions}">
+     */
+    ko.bindingHandlers.slickList = {
+      /**
+       * The logic runs once to initialize the binding for this element.
+       * @private
+       * @memberof ko.bindingHandlers.slickList
+       * @function init
+       * @param {Object} element The DOM element attached to this binding.
+       * @param {function(): Object} valueAccessor A function that returns all of the values associated with this binding.
+       */
+      init: function(element, valueAccessor) {
+
+        var settings = valueAccessor();
+        var formatter = settings.taskFormatter || new TaskNameFormatter(ko.utils.unwrapObservable(settings.template));
+
+        var collapseText = ko.utils.unwrapObservable(settings.collapseText);
+        var selectText = ko.utils.unwrapObservable(settings.selectText);
+        var editText = ko.utils.unwrapObservable(settings.editText);
+        formatter.setReaderText(collapseText, selectText, editText);
+
+        var items = ko.utils.unwrapObservable(settings.items);
+        var columns = [{
+            id: "id",
+            name: "Title",
+            field: "id",
+            width: 248,
+            cssClass: "cell-title",
+            formatter: formatter
+            //behavior: "move"
+        }];
+
+        var options = {
+            editable: true,
+            enableAddRow: true,
+            enableCellNavigation: false,
+            asyncEditorLoading: false,
+            autoEdit: false,
+            multiSelect: false,
+            rowHeight: 36
+        };
+
+        var dataView = new Slick.Data.DataView({
+          inlineFilters: false
+        });
+        //dataView.setFilter(self.myFilter);
+
+        var grid = new Slick.Grid(element, dataView, columns, options);
+        grid.setSelectionModel(new Slick.RowSelectionModel());
+
+        // enable enter key on focused link to trigger click handler
+        grid.onKeyDown.subscribe(function(e, args) {
+          //The slick list binding adds a data-context-id attribute to elements to indicate the object's id in
+          //an easy to access way.
+          var context = $(e.target).attr("data-context-id");
+          if(e.keyCode === 13 &amp;&amp; settings.handler) {
+            settings.handler(context);
+          }
+          return false;
+        });
+
+        grid.onClick.subscribe(function(e, args) {
+          //The slick list binding adds a data-context-id attribute to elements to indicate the object's id in
+          //an easy to access way.
+          var context = $(e.target).attr("data-context-id");
+          if(settings.handler) {
+            settings.handler(context);
+          }
+          return false;
+        });
+
+        element.slickList = {grid: grid, formatter: formatter};
+
+        ko.utils.domNodeDisposal.addDisposeCallback(element, function() {
+          grid.destroy();
+        });
+      },
+
+      /**
+       * update is run whenever an observable in the binding's properties changes.
+       * @private
+       * @memberof ko.bindingHandlers.slickList
+       * @function update
+       * @param {Object} element The DOM element attached to this binding.
+       * @param {function(): Object} valueAccessor A function that returns all of the values associated with this binding.
+       */
+      update: function(element, valueAccessor) {
+        if(!element.slickList) {
+          return;
+        }
+
+        var grid = element.slickList.grid;
+        var settings = valueAccessor();
+        var items = ko.utils.unwrapObservable(settings.items) || [];
+        var selected = ko.utils.unwrapObservable(settings.selected);
+
+        var collapseText = ko.utils.unwrapObservable(settings.collapseText);
+        var selectText = ko.utils.unwrapObservable(settings.selectText);
+        var editText = ko.utils.unwrapObservable(settings.editText);
+        element.slickList.formatter.setReaderText(collapseText, selectText, editText);
+
+        element.slickList.formatter.setSelected(selected);
+
+        grid.getData().setItems(items, "id");
+        grid.invalidate();
+      }
+    };
+
+  })();
+
+  // --------------------------------------------------------------
+  // Locale Text
+  // --------------------------------------------------------------
+  /**
+   * The localeText binding searches through the loaded namespaces for
+   * the localized resource key.  In other words, it replaces a key with the
+   * actual string based upon the current or fallback locale.  The key is
+   * looked up through the valueAccessor() where the binding is applied. If the
+   * key does not exist in the loaded namespaces, it will look it up using the
+   * brute-force approach of successive calls to i18next.t() to see if there
+   * is a fallback value.
+   *
+   * The approach of using t() is required to compensate for the primary locale
+   * missing a key:value pair that is present in the fallback locale.  It is
+   * a fallback, therefore the cost is acceptable.  In testing, the use of the
+   * fallback should be obvious, and therefore the missing key:value should be
+   * added to the primary locale file.
+
+   * @public
+   * @class localText provides a resource key string lookup that searches all loaded namespaces.
+   *
+   * @example
+   * // "exportText" is the key to lookup.
+   * data-bind="localeText: 'exportText'"
+   * // closeText will be looked up and set as the value of the attribute "title"."
+   * localeText: {value: 'closeText', attr: 'title'}"
+   */
+  ko.bindingHandlers.localeText = {
+    /**
+     * update is run whenever an observable in the binding's properties changes.
+     * @private
+     * @memberof ko.bindingHandlers.localeText
+     * @function update
+     * @param {Object} element The DOM element attached to this binding.
+     * @param {function(): Object} valueAccessor A function that returns all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+     * @param {Object} viewModel The viewModel that is the current context for this binding.
+     * @param {Object} bindingContext The binding hierarchy for the current context.
+     */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var bindingValue = valueAccessor();
+      var token, translatedString;
+
+      /**
+       * Define our helper function to search the namespaces first, and if that
+       * fails it will use successive calls to translate() until it finds a
+       * value or fails again.
+       */
+      var translate = function(token) {
+        var translatedString;
+        if(bindingContext.contextResources &amp;&amp; bindingContext.contextResources()[token] != undefined) {
+          translatedString = bindingContext.contextResources()[token];
+        }
+        else if(bindingContext.$root.pageResources() != undefined &amp;&amp; bindingContext.$root.pageResources()[token] != undefined) {
+          translatedString = bindingContext.$root.pageResources()[token];
+        }
+        else if(bindingContext.$root.commonResources() != undefined &amp;&amp; bindingContext.$root.commonResources()[token] != undefined) {
+          translatedString = bindingContext.$root.commonResources()[token];
+        }
+        else if(bindingContext.$root.catalogResources() != undefined &amp;&amp; bindingContext.$root.catalogResources()[token] != undefined) {
+          translatedString = bindingContext.$root.catalogResources()[token];
+        }
+        else {
+
+          // assume we have nothing to return
+          translatedString = "";
+
+          /*
+           * Here's the thing -- when i18next loads an entire file all at once
+           * using loadNamespace() it can't use the fallback language if there
+           * is a key missing from the target language file.  It can't use it
+           * because it doesn't know about it, so how can it fallback?
+           * Therefore we need to hold it's hand and do the lookup for it.  This
+           * is brute force -- thank goodness it is only in an exception case!!
+           */
+
+          // Do lookup only if the resource files are loaded.  If this is done
+          // before these are loaded, use of the binding returns a blank string.
+          if (bindingContext.contextResources ||
+            bindingContext.$root.pageResources() != undefined ||
+            bindingContext.$root.commonResources() != undefined ||
+            bindingContext.$root.catalogResources() != undefined) {
+
+            var found = false, i18nKey;
+
+            // helper function to tell us if the value was found
+            // i18next's default "not found" action is to return the key :/
+            var isFound = function(key, value) {
+              return value != undefined &amp;&amp; value !== i18nKey &amp;&amp; value.length > 0;
+            };
+
+            // Lookup page resource first (bindingContext.$root.target.pageId)
+            if (bindingContext.$root.target &amp;&amp;
+                bindingContext.$root.target.pageId) {
+              var pageId = bindingContext.$root.target.pageId;
+              i18nKey = 'ns.' + pageId + ':resources.' + token;
+              translatedString = CCi18n.t(i18nKey);
+              found = isFound(i18nKey, translatedString);
+            }
+
+            if (!found) {
+              i18nKey = 'ns.common:resources.' + token;
+              translatedString = CCi18n.t(i18nKey);
+              found = isFound(i18nKey, translatedString);
+            }
+
+            if (!found) {
+              i18nKey = 'ns.catalog:resources.' + token;
+              translatedString = CCi18n.t(i18nKey);
+              found = isFound(i18nKey, translatedString);
+            }
+
+            if (!found) {
+              i18nKey = 'ns.joyride:resources.' + token;
+              translatedString = CCi18n.t(i18nKey);
+              found = isFound(i18nKey, translatedString);
+            }
+
+            if (!found) {
+              translatedString = "";
+            }
+
+          }
+
+        } // else
+
+        return translatedString;
+      };
+
+      /*
+       * Function Body
+       */
+      if (typeof bindingValue == 'string') {
+        token = bindingValue;
+      }
+      else if (typeof bindingValue == 'object' &amp;&amp; bindingValue.value != undefined) {
+        token = bindingValue.value;
+      }
+      else {
+        // we know we'll get nothing
+        translatedString = "";
+      }
+
+      // no point in looking up an empty token
+      if (token &amp;&amp; token.length > 0) {
+        translatedString = translate(token);
+      }
+
+      if (typeof bindingValue == 'string') {
+        $(element).text(translatedString);
+      }
+      else if (typeof bindingValue == 'object' &amp;&amp; bindingValue.attr != undefined) {
+        $(element).attr( bindingValue.attr, translatedString );
+      }
+    }
+  };
+
+  // --------------------------------------------------------------
+  // Rich Text Editor
+  // --------------------------------------------------------------
+  /**
+   * The richText binding applies a Rich Text Editor to a text area
+   * for a property.  At the time of writing this the selected RTE is
+   * CKEditor
+   * 
+   * &lt;h2>Parameters:&lt;/h2>
+   * &lt;ul>
+   *   &lt;li>&lt;code>{String} property&lt;/code> - The view model property to bind to.&lt;/li>
+   *   &lt;li>&lt;code>{String} height&lt;/code> - The height of the editor, in pixels.&lt;/li>
+   *   &lt;li>&lt;code>{Observable} editor&lt;/code> - If supplied, an observable that will get populated with the CKEditor object.
+   *   Allows other view models to access properties and events of the CKEditor.&lt;/li>
+   * &lt;/ul>
+   * 
+   * @public
+   * @class richText applies a RichTextEditor to the textarea to which it's bound.
+   *
+   * @example
+   * &amp;lt;textarea
+   *     data-bind='
+   *       attr:{id: "widget-webcontent-editor",
+   *             class: "form-control"},
+   *       value: webContent,
+   *       richTextEditor: {property: webContent,
+   *                        height: 350}'>
+   * &lt;/textarea>
+   */
+  ko.bindingHandlers.richTextEditor = {
+    /**
+     * The logic runs once to initialize the binding for this element.
+     * @private
+     * @memberof ko.bindingHandlers.richTextEditor
+     * @function init
+     * @param {Object} pElement The DOM element attached to this binding.
+     * @param {function(): Object} pValueAccessor A function that returns all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+     */
+    init: function(pElement, pValueAccessor, allBindingsAccessor) {
+      var options = pValueAccessor(),
+          value = ko.utils.unwrapObservable(pValueAccessor()),
+          ckElement = $(pElement),
+          editor, updateValue,
+          height = options.height || 200;
+
+      /*
+       * Instance and configure CKEditor
+       *
+       * instances as an iframe... BOO -- but it works... YAY! -- with one
+       * console error with dynamic properties ... booo...
+       */
+      ckElement.html(value.property());
+
+      /*
+       * What is all this?
+       *
+       * toolbar:  The editor toolbar.  Individual items are somewhat obvious.
+       * Those that need explaining can go here:
+       * '-': insert a divider between toolbar items
+       * 'TextColor': color picker that has been temporarily removed; it may be
+       * replaced with another plugin that inserts styles, not color codes.
+       *
+       * format_tags:  populates the "Format" toolbar item with specific HTML
+       * format tags.
+       *
+       * removePlugins:  disables specific plugins (e.g., resizing the edit area)
+       *
+       * language: ckeditor has its own resource bundles - set the language to make sure it thinks
+       * the language is the same one we think it is.
+       */
+      ckElement.ckeditor( {
+        toolbar: [
+          [ 'Bold', 'Italic', 'NumberedList', 'BulletedList', 'Format',
+            '-', 'Link', 'Unlink', 'Image',
+            '-', 'Source' ]
+        ],
+        format_tags: 'p;h1;h2;h3;h4;h5;h6',
+        removePlugins: 'resize',
+        height: height,
+        allowedContent: true,
+        language: CCi18n.i18nOptions.lng
+      });
+
+      // create the editor to use
+      editor = ckElement.ckeditorGet();
+      
+      editor._lastSetObservableValue = value.property();
+
+      // handle a focus event on the wrapped element
+      ckElement.focus(function(e) {
+        editor.focus();
+      });
+      
+
+      // Setup disposal (if KO removes by the template binding))
+      ko.utils.domNodeDisposal.addDisposeCallback(pElement, function() {
+        if (editor) {
+          editor.removeAllListeners();
+          CKEDITOR.remove(editor);
+        }
+      });
+
+      /*
+       * Because the source editing happens in a textarea that REPLACES the
+       * iframe in which WYSIWYG editing happens, we need to watch that.  But we
+       * can only set this once the element exists!
+       */
+      editor.on("mode", function(e) {
+        if (e.editor.mode === "source") {
+          // find the text area
+          var ckContents = $("#" + editor.id + "_contents").first();
+          var taElement = ckContents.find('textarea').first();
+  
+          // put an event handler on it
+          taElement.on("input propertychange", function() {
+            var newValue = $(taElement).val();
+            if (options.property() || newValue) {
+              options.property(newValue);
+            }
+          });
+        }
+      });
+      editor.on('focus', function() {
+        $(pElement).parent()[0].scrollIntoView(false);
+      });
+
+      // Setup handling value update
+      updateValue = function(event) {
+        var newValue = this.getData();
+        
+        if (options.property() || newValue) {
+          options.property(newValue);
+        }
+      };
+
+      /*
+       * Set an event handler for 'change'; blur and unload don't work here.
+       * This ensures the value from the editor instance is set on the
+       * observable.
+       */
+      editor.on("change", updateValue);
+
+      pElement.editor = editor;
+
+      // if an editor observable was included in the properties
+      // set it to the editor just created. This allows the caller
+      // to add their own event handlers.
+      if(options.editor !== undefined &amp;&amp; ko.isObservable(options.editor)) {
+        options.editor(editor);
+      }
+
+    },
+
+    /**
+     * update is run whenever an observable in the binding's properties changes.
+     * @private
+     * @memberof ko.bindingHandlers.richTextEditor
+     * @function update
+     * @param {Object} pElement The DOM element attached to this binding.
+     * @param {function(): Object} pValueAccessor A function that returns all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+     */
+    update: function(pElement, pValueAccessor, allBindingsAccessor) {
+      var newValue = ko.utils.unwrapObservable(pValueAccessor()),
+          editor = $(pElement).ckeditorGet(),
+          oldValue = editor.getData(),
+          setValue;
+
+      if(newValue.property() === null || newValue.property() === undefined) {
+        setValue = '';
+      } else {
+        setValue = newValue.property();
+      }
+
+      // update the editor value and the text area value
+      if (oldValue != setValue) {
+        editor.setData(setValue, {
+          callback: function() {
+            // Set isModified if the property is validatable
+            if(typeof newValue.property.isModified === 'function') {
+              newValue.property.isModified(false);
+            }
+          }
+        });
+      }
+    }
+  };
+
+  // --------------------------------------------------------------
+  // Joyride Tour
+  // --------------------------------------------------------------
+  /**
+   * Enables a joyride tour for a given start element. Uses the joyride jQuery
+   * plugin from &lt;a href="https://github.com/zurb/joyride">https://github.com/zurb/joyride&lt;/a>.
+   * 
+   * &lt;h2>Parameters:&lt;/h2>
+   * &lt;ul>
+   *   &lt;li>&lt;code>{Observable String} name&lt;/code> - The name of the tour.&lt;/li>
+   *   &lt;li>&lt;code>{Observable String} nextUrl&lt;/code> - The url to go to after the tour completes.&lt;/li>
+   *   &lt;li>&lt;code>{Observable String} [autoStart]&lt;/code> - Auto start the tour?&lt;/li>
+   *   &lt;li>&lt;code>{Observable Object} stepUrls&lt;/code> - The urls of each step. The object is expected to take the form:
+   *   &lt;pre>{ step_id : url }&lt;/pre>e.g.
+   *   &lt;pre>{ 1: 'url1.html', 2: 'url2.html' }&lt;/pre>
+   *   &lt;/li>
+   *   &lt;li>&lt;code>{Observable Object} [stepPreCallbacks]&lt;/code> - The callback functions to be called &lt;b>before&lt;/b> navigating to each step. 
+   *   Expects an object similar to above, mapping a step number to a callback function, e.g.:
+   *   &lt;pre>
+   *   { 1: step1PreCallback, 2: step2PreCallback }
+   *   &lt;/pre>&lt;/li>
+   *   &lt;li>&lt;code>{Observable Object} [stepPostCallbacks]&lt;/code> - The callback functions to be called &lt;b>after&lt;/b> navigating to each step. 
+   *   Expects an object mapping a step number to a callback function.&lt;/li>
+   *   &lt;li>&lt;code>{Observable int} [delay=1000]&lt;/code> - Initial delay before starting the tour, in milliseconds.&lt;/li>
+   *   &lt;li>&lt;code>{Observable int} [timer=25000]&lt;/code> - Time between steps in the tour, in milliseconds.&lt;/li>
+   *   &lt;li>&lt;code>{Observable boolean} [startTimerOnClick=false]&lt;/code> - Start the timer after the first click?&lt;/li>
+   *   &lt;li>&lt;code>{Observable String} tourLinkId&lt;/code> - If populated, start the tour when the ADMIN_TOUR_REQUESTED event is received.&lt;/li>
+   *   &lt;li>&lt;code>{Observable boolean} lastStop&lt;/code> - Is the current element the last stop in the tour?&lt;/li>
+   * &lt;/ul>
+   * 
+   * @private
+   * @class tour sets up a tour of sequential page elements using the joyride jQuery plugin.
+   * 
+   * @example
+   * &amp;lt;ol id="catalog-joyride" class="joyRideTipContent" 
+   *   data-bind="tour: {name: 'catalog', nextUrl: '/marketing', autoStart: true,
+   *     stepUrls: {1:'/settings/paymentProcessing', 2:'/settings/siteSettings'}
+   *     stepPreCallbacks: {1: showMenuForJoyride}, stepPostCallbacks: {1: hideMenuForJoyride}}">
+   */
+  ko.bindingHandlers.tour = {
+
+    /**
+      Start the tour.
+      @private
+      @memberof ko.bindingHandlers.tour
+      @function startTour
+      @param {Object} element The DOM element attached to this binding.
+      @param {String} autoStartValue - Auto start the tour?
+      @param {Object} stepURLs - The urls of each step.
+      @param {Object} nextURL - The urls to go to after the tour finishes.
+      @param {Object} stepPreCallbacks - The callback functions to be called &lt;b>before&lt;/b> navigating to each step.
+      @param {Object} stepPostCallbacks - The callback functions to be called &lt;b>after&lt;/b> navigating to each step.
+      @param {int} timer - Time between steps in the tour, in milliseconds.
+      @param {boolean} startTimerOnClick - Start the timer after the first click? 
+      @param {int} delay - Initial delay before starting the tour, in milliseconds.
+      @param {String} tourName - The tour name.
+      @param {boolean} lastStop - Is this the last stop on the tour?
+      @param {function} postCallback - Callback function to be called when the tour finishes.
+    */
+    startTour: function(element,autoStartValue,stepPreCallbacks, stepPostCallbacks,
+        stepURLs,nextURL,timer,startTimerOnClick,delay,tourName,lastStop,postCallback,bindingContext) {
+      window.setTimeout( function() {
+      $(window).joyride("destroy"); // clear previous tours
+      if(!lastStop){
+        var nextAuthorizedTour = profileHelper.nextAuthorizedPage(nextURL);
+        if(nextAuthorizedTour){
+          if(nextAuthorizedTour.nextURL !== nextURL){
+            if(nextAuthorizedTour.lastStop){
+              lastStop = nextAuthorizedTour.lastStop;
+            }else{
+              lastStop = false;
+            }
+            if(nextAuthorizedTour.hasOwnProperty(CCConstants.URL)){
+              nextURL = nextAuthorizedTour[CCConstants.URL];
+            }
+          }
+        }else{
+          nextURL = undefined;
+          lastStop = true;
+        }
+      }
+      if (autoStartValue) {
+        // Inform the rest of the UI that a tour has started
+        $.Topic(PubSub.topicNames.ADMIN_TOUR_STARTED).publish(tourName);
+      }
+      $(element).joyride({
+        preStepCallback : function (index, tip) {
+          var currentStepCallback = stepPreCallbacks[index],
+            currentStepUrl = stepURLs[index];
+          if (currentStepUrl) {
+            window.location.hash = currentStepUrl;
+          }
+          
+          if(currentStepCallback) {
+            console.log(currentStepCallback);
+            currentStepCallback();
+          }
+        },
+        postStepCallback : function (index, tip) {
+          var currentStepCallback = stepPostCallbacks[index];
+          if(currentStepCallback) {
+            currentStepCallback();
+          }
+        },
+        postRideCallback: function(index, currentTipe, isAborted) {
+          // when the 'x' is clicked in the joyride modal, actually stop the tour,
+          // destroy joyride, set forceTour to false and set tour as complete
+          if(isAborted) {
+            $(window).joyride("destroy");
+            nextURL = null;
+            $.Topic(PubSub.topicNames.ADMIN_TOUR_CANCELED).publish();
+            $.Topic(PubSub.topicNames.ADMIN_TOUR_ENDED).publish(tourName);
+          }
+
+          if (postCallback)
+            postCallback();
+          if (lastStop) {
+  		    if (bindingContext.$parent.forceTour) {
+		      bindingContext.$parent.forceTour(false);
+		    }
+		    if (bindingContext.$parent['profileData']){
+		      bindingContext.$parent.profileData.tourComplete = true;
+		    }
+            $.Topic(PubSub.topicNames.ADMIN_TOUR_ENDED).publish(tourName);
+          }
+          if (nextURL) {
+            window.location.hash = nextURL;
+          }
+        },
+        'autoStart' : autoStartValue,
+        'modal':false,
+        'expose': false,
+        'timer': timer,
+        'startTimerOnClick': startTimerOnClick,
+        'cookieMonster': false,
+        'cookieName': 'occsTour'+tourName
+      });
+      }, delay );
+    },
+
+    /**
+      The logic runs once to initialize the binding for this element.
+      @private
+      @memberof ko.bindingHandlers.tour
+      @function init
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+      @param {Object} viewModel The viewModel that is the current context for this binding.
+      @param {Object} bindingContext The binding hierarchy for the current context.
+    */
+    init: function(element, valueAccessor, allBindings, viewModel, bindingContext) {
+      // First get the latest data that we're bound to
+      var value = valueAccessor();
+      // Next, whether or not the supplied model property is observable, get its current value
+      var valueUnwrapped = ko.unwrap(value),
+      tourConfig = bindingContext.$root.tour.config,
+      tourName = ko.utils.unwrapObservable(valueUnwrapped['name']) || 'home',
+      nextURL = ko.utils.unwrapObservable(valueUnwrapped['nextUrl']) || tourConfig[tourName].nextUrl,
+      autoStartValue = ko.utils.unwrapObservable(valueUnwrapped['autoStart']) || false,
+      stepURLs = ko.utils.unwrapObservable(valueUnwrapped['stepUrls']) || tourConfig[tourName].stepUrls || [],
+      stepPreCallbacks = ko.utils.unwrapObservable(valueUnwrapped['stepPreCallbacks']) || [],
+      stepPostCallbacks = ko.utils.unwrapObservable(valueUnwrapped['stepPostCallbacks']) || [],
+      delay = ko.utils.unwrapObservable(valueUnwrapped['delay']) || 1000,
+      timer = ko.utils.unwrapObservable(valueUnwrapped['timer']) || 25000,
+      startTimerOnClick = ko.utils.unwrapObservable(valueUnwrapped['startTimerOnClick']) || false,
+      tourLinkId = ko.utils.unwrapObservable(valueUnwrapped['tourLinkId']),
+      // If this is the last stop update the user data to mark that they have completed the tour
+      lastStop = ko.utils.unwrapObservable(valueUnwrapped['lastStop']),
+      forceTour = false,
+      postTour = null,
+      tourCompleted = false;
+      // Used to explicitly kick off tour from link click
+      // We only want one binding at a time listening on this event
+      if (tourLinkId) {
+        $.Topic(PubSub.topicNames.ADMIN_TOUR_REQUESTED).subscribe(
+          function () {
+            ko.bindingHandlers.tour.startTour(element,autoStartValue,stepPreCallbacks,stepPostCallbacks,
+              stepURLs, nextURL,timer,startTimerOnClick,delay,tourName,lastStop,null,bindingContext);
+          }
+        );
+      }
+      // check if this user has already taken the tour and
+      // update client-side state about the user
+      for (var i = 0; i &lt; bindingContext.$parents.length; i++) {
+        if (bindingContext.$parents[i]['profileData'] ) {
+          tourCompleted = bindingContext.$parents[i].profileData.tourComplete;
+          forceTour = ko.utils.unwrapObservable(bindingContext.$parents[i].forceTour);
+          break;
+        }
+      }
+      if (tourCompleted &amp;&amp; !forceTour) {
+        // bail: user has already taken the tour
+        return;
+      }
+      // Now manipulate the DOM element
+      if (valueUnwrapped === true) {
+        tourName = valueUnwrapped;
+      }
+      var self = this;
+      /* This needs work. It's delayed so that resource bundles are loaded in time.
+         a deferred would work better so we register this after bundles are ready to go */
+
+      if (lastStop) {
+        postTour = function() {
+          if (bindingContext.$parent.forceTour)
+            bindingContext.$parent.forceTour(false);
+          if (bindingContext.$parent['profileData'])
+            bindingContext.$parent.profileData.tourComplete = true;
+        };
+      }
+      ko.bindingHandlers.tour.startTour(element,autoStartValue,stepPreCallbacks,stepPostCallbacks,
+          stepURLs, nextURL,timer,startTimerOnClick,delay,tourName,lastStop,postTour,bindingContext);
+    },
+    /**
+      update is run whenever an observable in the binding's properties changes.
+      @private
+      @memberof ko.bindingHandlers.tour
+      @function update
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+      @param {Object} viewModel The viewModel that is the current context for this binding.
+      @param {Object} bindingContext The binding hierarchy for the current context.
+    */
+    update: function(element, valueAccessor, allBindings) {
+    }
+  };
+    
+  /**
+   * Allows setting of contextResources on an element or child elements.
+   * 
+   * contextResources is inspected in the localeText binding. Use this binding if you need to set this value, 
+   * in order to load a resource from a set of resources that aren't in the current page's name space, or in the common resources.
+   * 
+   * e.g. when reusing a modal from the design page, on the code page, we need the ns.design resources for this modal.
+   *
+   * @public
+   * @class contextresourceNamespace lets you set the context resources for an element or child elements. 
+   * 
+   * @example 
+   * &amp;lt;div data-bind="contextResourcesNamespace: 'design'">
+   * &amp;lt;!-- ko contextResourcesNamespace : 'design' --> 
+   */
+  ko.bindingHandlers.contextResourcesNamespace = {
+
+    /**
+      update is run whenever an observable in the binding's properties changes.
+      @private
+      @memberof ko.bindingHandlers.contextResourcesNamespace
+      @function update
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+      @param {Object} viewModel The viewModel that is the current context for this binding.
+      @param {Object} bindingContext The binding hierarchy for the current context.
+    */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      
+      var ns = ko.utils.unwrapObservable(valueAccessor());
+      
+      CCi18n.loadNamespace(ns, CCi18n.i18nOptions, function (resourceObj) {
+        bindingContext.contextResources = ko.observable(resourceObj);
+      });
+    }
+  };
+
+  // allow this to be a container less binding e.g. &lt;!-- ko contextResourcesNamespace : 'design' --> 
+  ko.virtualElements.allowedBindings.contextResourcesNamespace = true;
+});
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Index</a></h2><h3>Modules</h3><ul><li><a href="module-ccKoErrorWrapper.html">ccKoErrorWrapper</a></li><li><a href="module-ccKoExtensions.html">ccKoExtensions</a></li></ul><h3>Classes</h3><ul><li><a href="Address.html">Address</a></li><li><a href="CartViewModel.html">CartViewModel</a></li><li><a href="DynamicProperty.html">DynamicProperty</a></li><li><a href="EventDispatcher.html">EventDispatcher</a></li><li><a href="GiftCardViewModel.html">GiftCardViewModel</a></li><li><a href="GiftProductListingViewModel.html">GiftProductListingViewModel</a></li><li><a href="ko.bindingHandlers.background.html">background</a></li><li><a href="ko.bindingHandlers.carouselSwipe.html">carouselSwipe</a></li><li><a href="ko.bindingHandlers.ccForm.html">ccForm</a></li><li><a href="ko.bindingHandlers.ccLink.html">ccLink</a></li><li><a href="ko.bindingHandlers.ccValidation.html">ccValidation</a></li><li><a href="ko.bindingHandlers.checkbox.html">checkbox</a></li><li><a href="ko.bindingHandlers.chosen.html">chosen</a></li><li><a href="ko.bindingHandlers.contextResourcesNamespace.html">contextResourcesNamespace</a></li><li><a href="ko.bindingHandlers.currency.html">currency</a></li><li><a href="ko.bindingHandlers.datepicker.html">datepicker</a></li><li><a href="ko.bindingHandlers.datepopover.html">datepopover</a></li><li><a href="ko.bindingHandlers.draggable.html">draggable</a></li><li><a href="ko.bindingHandlers.droppable.html">droppable</a></li><li><a href="ko.bindingHandlers.fade.html">fade</a></li><li><a href="ko.bindingHandlers.hover.html">hover</a></li><li><a href="ko.bindingHandlers.imageSource.html">imageSource</a></li><li><a href="ko.bindingHandlers.imageZoom.html">imageZoom</a></li><li><a href="ko.bindingHandlers.localeText.html">localeText</a></li><li><a href="ko.bindingHandlers.makeAccess.html">makeAccess</a></li><li><a href="ko.bindingHandlers.modal.html">modal</a></li><li><a href="ko.bindingHandlers.modalTabbingContraint.html">modalTabbingContraint</a></li><li><a href="ko.bindingHandlers.onRender.html">onRender</a></li><li><a href="ko.bindingHandlers.popeditor.html">popeditor</a></li><li><a href="ko.bindingHandlers.popover.html">popover</a></li><li><a href="ko.bindingHandlers.productImageSource.html">productImageSource</a></li><li><a href="ko.bindingHandlers.propertyEditor.html">propertyEditor</a></li><li><a href="ko.bindingHandlers.radio.html">radio</a></li><li><a href="ko.bindingHandlers.richTextEditor.html">richTextEditor</a></li><li><a href="ko.bindingHandlers.scrollAffix.html">scrollAffix</a></li><li><a href="ko.bindingHandlers.select2.html">select2</a></li><li><a href="ko.bindingHandlers.select2Tags.html">select2Tags</a></li><li><a href="ko.bindingHandlers.selectable.html">selectable</a></li><li><a href="ko.bindingHandlers.slickList.html">slickList</a></li><li><a href="ko.bindingHandlers.slide.html">slide</a></li><li><a href="ko.bindingHandlers.slider.html">slider</a></li><li><a href="ko.bindingHandlers.spectrum.html">spectrum</a></li><li><a href="ko.bindingHandlers.tagsInput.html">tagsInput</a></li><li><a href="ko.bindingHandlers.textCheck.html">textCheck</a></li><li><a href="ko.bindingHandlers.timepicker.html">timepicker</a></li><li><a href="ko.bindingHandlers.triggerMessage.html">triggerMessage</a></li><li><a href="ko.bindingHandlers.validatableTarget.html">validatableTarget</a></li><li><a href="ko.bindingHandlers.validatableValue.html">validatableValue</a></li><li><a href="ko.bindingHandlers.widgetLocaleText.html">widgetLocaleText</a></li><li><a href="koValidation.alphaNumeric.html">alphaNumeric</a></li><li><a href="koValidation.alphaNumericNoSpaces.html">alphaNumericNoSpaces</a></li><li><a href="koValidation.alphaNumericNoSpacesWithSeperators.html">alphaNumericNoSpacesWithSeperators</a></li><li><a href="koValidation.alphaNumericWithSeperators.html">alphaNumericWithSeperators</a></li><li><a href="koValidation.bool.html">bool</a></li><li><a href="koValidation.creditcard.html">creditcard</a></li><li><a href="koValidation.cvv.html">cvv</a></li><li><a href="koValidation.endmonth.html">endmonth</a></li><li><a href="koValidation.endyear.html">endyear</a></li><li><a href="koValidation.importFileName.html">importFileName</a></li><li><a href="koValidation.laterDate.html">laterDate</a></li><li><a href="koValidation.match.html">match</a></li><li><a href="koValidation.mediaZipFileName.html">mediaZipFileName</a></li><li><a href="koValidation.number.html">number</a></li><li><a href="koValidation.observablePattern.html">observablePattern</a></li><li><a href="koValidation.password.html">password</a></li><li><a href="koValidation.price.html">price</a></li><li><a href="koValidation.propertyIdAlreadyInUse.html">propertyIdAlreadyInUse</a></li><li><a href="koValidation.propertyNameAlreadyInUse.html">propertyNameAlreadyInUse</a></li><li><a href="koValidation.restrictSlashCharacters.html">restrictSlashCharacters</a></li><li><a href="koValidation.startmonth.html">startmonth</a></li><li><a href="koValidation.startyear.html">startyear</a></li><li><a href="koValidation.uniqueTrimmed.html">uniqueTrimmed</a></li><li><a href="koValidation.uniqueTrimmedCaseInsensitive.html">uniqueTrimmedCaseInsensitive</a></li><li><a href="koValidation.url.html">url</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.addTemplate.html">addTemplate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDate.html">ccDate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDateTime.html">ccDateTime</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccNumber.html">ccNumber</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.disabled.html">disabled</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.element.html">element</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.embeddedAssistance.html">embeddedAssistance</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.inTabFlow.html">inTabFlow</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.setContextVariable.html">setContextVariable</a></li><li><a href="NavStateViewModel.html">NavStateViewModel</a></li><li><a href="OrderHistoryViewModel.html">OrderHistoryViewModel</a></li><li><a href="OrderViewModel.html">OrderViewModel</a></li><li><a href="ParentOrganisation.html">ParentOrganisation</a></li><li><a href="ProductListingSearchViewModel.html">ProductListingSearchViewModel</a></li><li><a href="ProductListingViewModel.html">ProductListingViewModel</a></li><li><a href="ProductViewModel.html">ProductViewModel</a></li><li><a href="PubSub.topicNames.html">topicNames</a></li><li><a href="resetCVV.html">resetCVV</a></li><li><a href="resetPaymentDetails.html">resetPaymentDetails</a></li><li><a href="SearchRestClient.html">SearchRestClient</a></li><li><a href="UserViewModel.html">UserViewModel</a></li><li><a href="WidgetViewModel.html">WidgetViewModel</a></li><li><a href="WishlistContentViewModel.html">WishlistContentViewModel</a></li></ul><h3>Namespaces</h3><ul><li><a href="ko.bindingHandlers.html">bindingHandlers</a></li><li><a href="ko.extenders.html">extenders</a></li><li><a href="koValidation.html">koValidation</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CCEETagProcessor">CCEETagProcessor</a></li><li><a href="global.html#isValidDeterminewhetherornotthepaymentdetailsobjectisvalidbasedonthevalidityofitscomponentparts.Thiswillnotcauseerrormessagestobedisplayedforanyobservablevaluesthatareunchangedandhaveneverreceivedfocusontherelatedformfield(s).">isValid
+Determine whether or not the payment details object is valid
+based on the validity of its component parts. This will not
+cause error messages to be displayed for any observable values
+that are unchanged and have never received focus on the 
+related form field(s).</a></li><li><a href="global.html#validatePaymentDetailsForceallrelevantmemberobservablestoperformtheirvalidationnow&displaytheerrors(ifany)">validatePaymentDetails
+Force all relevant member observables to perform their
+validation now & display the errors (if any)</a></li></ul>
+</nav>
+
+<br clear="both">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0</a> on Mon Oct 10 2016 10:49:03 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Dynamo/Client/Store/web/store.war/shared/js/ccLibs/cc-ko-extensions.js</title>
+    
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    
+    <h1 class="page-title">Source: Dynamo/Client/Store/web/store.war/shared/js/ccLibs/cc-ko-extensions.js</h1>
+    
+    
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source"><code>/**
+ * @fileoverview Includes knockout extensions that contain logic specific
+ * to cloud commerce functionality. Any extensions that require knowledge
+ * about cloud's functionality should go here. Other extensions live
+ * under ko-extensions.js
+ *
+ *
+ */
+
+/*global $ */
+/**
+ * @module ccKoExtensions
+ */
+define(
+//-------------------------------------------------------------------
+// PACKAGE NAME
+//-------------------------------------------------------------------
+  'ccKoExtensions',
+
+//-------------------------------------------------------------------
+// DEPENDENCIES
+//-------------------------------------------------------------------
+  ['knockout', 'jqueryui', 'currencyHelper', 'CCi18n', 'ccDate', 'ccNumber', 'profileHelper',
+    'ccLogger', 'dateTimeUtils', 'pubsub', 'ccConstants', 'ojs/ojcore', 'i18next', 'navigation'],
+
+//-------------------------------------------------------------------
+// MODULE DEFINITION
+//-------------------------------------------------------------------
+  function (ko, jqueryui, currencyHelper, CCi18n, CCDate, CCNumber, profileHelper, CCLogger, dateTimeUtils, PubSub, CCConstants, ojs, i18next, navigation) {
+
+    "use strict";
+
+    var useHashBang = CCConstants.ALLOW_HASHBANG;
+    var useHistoryApi = false;
+    if (window.history &amp;&amp; window.history.pushState) {
+      useHistoryApi = true;
+    }
+    //-----------------------------------------------------------------------------------------------------
+    // PROPERTY EDITOR EXTENSION
+    //-----------------------------------------------------------------------------------------------------
+    (function() {
+      var layoutViewMapping,modelUpdated, hasValue, isNumber, clearStatus, validate,
+        togglePasswordVisibility, setPasswordVisible, clickOrKeydownToUpdatePassword,
+        blurPasswordField, keyUpInPasswordField, setValuesFromObservable, addonFocusInput,
+        validateOjetDate, validateOjetTime, clearValueFunction;
+
+      var PROPERTY_EDITOR_PREFIX = 'CC-propertyEditor-';
+
+      /**
+       * Function to clear/null the value of a property editor
+       * @param {Object} data Additional data for currencyMap observables
+       **/
+      clearValueFunction = function(data, data2) {
+        
+        
+        if(this.type === 'currencyMap' &amp;&amp; data) {
+          this.property()[data.id](null);
+          $('#' + this.property()[data.id].formId).focus();
+        } else {
+          this.property(null);
+          $('#' + this.property.formId).focus();
+        }
+      };
+
+      /**
+       * Determine whether or not the current Address object is valid
+       * based on the validity of its component parts. This will not
+       * cause error messages to be displayed for any observable values
+       * that are unchanged and have never received focus on the
+       * related form field(s).
+       * @private
+       * @function
+       * @name ko.bindingHandlers.propertyEditor#validate
+       * @return {boolean} true if address is valid, otherwise false.
+       */
+      validate = function(data, event){
+        var prop;
+        
+        // set the appropriate property to validate
+        if(this.type === 'currencyMap') {
+          prop = this.property()[data.id];
+        } else {
+          prop = this.property;
+        }
+
+        // Temporary change to get around validation on cart layout settings
+        if(prop != undefined &amp;&amp; !prop.isModified() &amp;&amp; !prop.isValid()) {
+          prop.isModified(true);
+          prop.forcedModified = true;
+        } else if(prop &amp;&amp; prop.forcedModified &amp;&amp; prop()) {
+          prop.forcedModified = false;
+        }
+      };
+
+      /**
+       * This function takes care of showing and hiding the inline messages
+       * and takes care of validation for ojet dates for required and valid dates.
+       * @private
+       * @function
+       * @name ko.bindingHandlers.propertyEditor#validateOjetDate
+       */
+      validateOjetDate = function() {
+        var valid = true;
+        var inputText = $('#'+this.idBase +'field').val();
+        if(inputText === '') {
+          $('#'+this.idBase +'controlGroup .cc-required-message').css('display', 'inline-block');
+        } else {
+          $('#'+this.idBase +'controlGroup .cc-required-message').css('display', 'none');
+        }
+        valid = dateTimeUtils.validateDate(inputText);
+        if(valid === false) {
+          $('#'+this.idBase +'controlGroup .cc-invalid-date').css('display', 'inline-block');
+        } else {
+          $('#'+this.idBase +'controlGroup .cc-invalid-date').css('display', 'none');
+        }
+      };
+
+      /** This function takes care of changing the time to 00:00 in case the
+       * time input by user is not a valid time
+       * @private
+       * @function
+       * @name ko.bindingHandlers.propertyEditor#validateOjetTime
+       */
+      validateOjetTime = function() {
+        var valid = true;
+        var inputText = $('#'+this.idBase +'field').val();
+        valid = dateTimeUtils.validateTime(inputText);
+        if(valid === false) {
+          $('#'+this.idBase +'field').val('T00:00:00');
+          this.property('T00:00:00');
+        }
+      };
+
+      /**
+       * Focus on input from input addon (or any element within a given property editor)
+       * @private
+       * @function
+       * @name ko.bindingHandlers.propertyEditor#addonFocusInput
+       * @param {string} elementId ID of property editor form field
+       */
+      addonFocusInput = function(elementId){
+        $('#'+elementId).focus();
+      };
+
+      /**
+       * Toggle visibility of a password field.
+       * @private
+       * @function
+       * @name ko.bindingHandlers.propertyEditor#togglePasswordVisibility
+       * @param {string} elementId ID of a field of type password to be toggled between obscured and clear
+       * @param {Object} event Click event on hide/reveal button
+       */
+      togglePasswordVisibility = function(elementId, event) {
+        var passwordEl = $('#' + elementId).get(0);
+        var toggle = $('#' + event.target.id);
+        if(passwordEl.type == 'text') {
+          setPasswordVisible(passwordEl, toggle, false);
+        } else {
+          setPasswordVisible(passwordEl, toggle, true);
+        }
+      };
+
+      /**
+       * Set password visibility and toggle hide/reveal button.
+       * @private
+       * @function
+       * @name ko.bindingHandlers.propertyEditor#setPasswordVisible
+       * @param {HTMLElement} passwordEl HTML element for password field
+       * @param {HTMLElement} toggle HTML element for hide/reveal button.
+       * @param {boolean} visible Visibility to be applied to password field
+       */
+      setPasswordVisible = function(passwordEl, toggle, visible) {
+        if (visible) {
+          passwordEl.type = 'text';
+          toggle.text(CCi18n.t('ns.common:resources.hideText'));
+        } else {
+          passwordEl.type = 'password';
+          toggle.text(CCi18n.t('ns.common:resources.revealText'));
+        }
+      };
+
+      /**
+       * Change the display of input password field on a click or keydown event.
+       * @private
+       * @function
+       * @name ko.bindingHandlers.propertyEditor#clickOrKeydownToUpdatePassword
+       * @param {Object} data Object containing data passed to the event handler
+       * @param {Object} event Click event from input field
+       */
+      clickOrKeydownToUpdatePassword = function(data, event) {
+        var updateMsg = $(event.target);
+        var inputPasswordField = $(event.target).prev('input');
+        var acceptKeyEvent = event.which === 1 || event.which === 32 || event.which === 13;
+        if (acceptKeyEvent) {
+          if (updateMsg.css("display") == "block" || updateMsg.css("display") == "inline-block") {
+            updateMsg.toggle(false);
+            $(event.target).prev('input').attr('disabled', false);
+            inputPasswordField.select();
+            inputPasswordField.val('');
+            inputPasswordField.focus();
+          }
+        } else if(event.which === 9){
+          return true;
+        }
+      };
+
+      /**
+       * Change the display of input password field on a blur event.
+       * @private
+       * @function
+       * @name ko.bindingHandlers.propertyEditor#blurPasswordField
+       * @param {boolean} hasPassword flag indicating if the field has a password
+       * @param {BlurEvent} event blur event from input field
+       */
+      blurPasswordField = function(hasPassword, event) {
+        var inputPasswordField = $(event.target);
+        var clickToUpdateButton = inputPasswordField.next('input');
+        if (inputPasswordField.val().length === 0) {
+          if (hasPassword) {
+            inputPasswordField.attr('disabled', 'true');
+            clickToUpdateButton.toggle(true);
+          }
+          this.validate();
+        }
+      };
+
+      /**
+       * Set the values of the bg 1
+       * @private
+       * @function
+       * @name ko.bindingHandlers.propertyEditor#setValuesFromObservable
+       * @param {Observable Object} pObservable Observable data source.
+       * @param {Object} pViewModel
+       */
+      setValuesFromObservable = function(pObservable, pViewModel) {
+        var rules, rule, type, ii;
+
+        type = ko.utils.unwrapObservable(pViewModel.type);
+        pViewModel.prefix = pViewModel.prefix || pObservable.prefix;
+        pViewModel.unit = pViewModel.unit || pObservable.unit;
+
+        if(!type &amp;&amp; pViewModel.values) {
+          type = 'radio';
+        }
+
+        if(pObservable.rules) {
+          rules = pObservable.rules();
+          for(ii = 0; ii &lt; rules.length; ii += 1) {
+            rule = rules[ii];
+
+            if(rule.rule === 'required' &amp;&amp; rule.params &amp;&amp;
+              (!rule.condition || rule.condition()) &amp;&amp;
+              pViewModel.required !== false) {
+              pViewModel.required = true;
+            }
+
+            if(!type) {
+              switch(rule.rule) {
+                case 'number':
+                  type = 'number';
+                  break;
+                case 'date':
+                  type = 'date-ojet';
+                  break;
+                case 'bool':
+                  type = 'checkbox';
+                  break;
+              }
+            }
+          }
+        }
+
+        if(!ko.utils.unwrapObservable(pViewModel.type)) {
+          pViewModel.type = type || 'shortText';
+        }
+
+        if(!pViewModel.label) {
+          pViewModel.label = pObservable.label;
+        }
+      };
+
+      /**
+       * The propertyEditor binding provides a way to easily display a
+       * form input field for any arbitrary property based on a provided
+       * type, label, and editor. The 'property' attribute of the binding will
+       * be the observable that is updated by the generated form field.
+       * @public
+       * @class ko.bindingHandlers.propertyEditor
+       */
+      ko.bindingHandlers.propertyEditor = {
+        /**
+         * The logic run once to initialize the binding for this element.
+         * Indicates that this binding controls descendant bindings.
+         * @private
+         * @function
+         * @param {HTMLElement} element The DOM element attached to this binding
+         * @param {function(): object} valueAccessor A function that returns
+         * all of the values associated with this binding.
+         */
+        init: function(element, valueAccessor) {
+          var values = ko.utils.unwrapObservable(valueAccessor());
+          return {'controlsDescendantBindings' : true};
+        },
+
+        /**
+         * Update is run whenever an observable in the binding's
+         * properties changes. Attempts to load the desired image from
+         * the provided source. If the image fails to load the fallback
+         * image &amp; text is instead used.
+         * @private
+         * @function
+         * @param {object} element The DOM element attached to this binding.
+         * @param {function(): object} valueAccessor A function that returns
+         * all of the values associated with this binding.
+         * @param {function(): object} allBindingsAccessor Object containing
+         * information about other bindings on the same HTML element.
+         * @param {object} viewModel The viewModel that is the current
+         * context for this binding.
+         * @param {object} bindingContext The binding hierarchy for
+         * the current context.
+         */
+        update: function(pElement, pValueAccessor, pAllBindingsAccessor, pViewModel, pBindingContext) {
+          var values = ko.utils.unwrapObservable(pValueAccessor()), date, minDate, numericJetValidation= ko.observable(true),
+            editorViewModel, templateValues, key, property, clearValue,
+            id, formElement, type, numericValidationErrorMessage = CCi18n.t('ns.common:resources.numberValidation');
+          //Values must have a property that's an observable
+          //and a type as a minimum requirement
+
+          if(!values.property || !ko.isObservable(values.property)) {
+            return;
+          }
+
+          property = values.property;
+          // make the property validatable to work better with the property editor
+          // validate() function and unsaved changes functionality
+          property.extend({validatable: true});
+          
+          id = ko.utils.unwrapObservable(values.id);
+          type = ko.utils.unwrapObservable(values.type);
+          date = new Date();
+          minDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+          clearValue = values.clearValue ? false : true;
+
+          // ensure that the property being used in a property editor is validatable
+          // regardless of whether validation is required or not.
+          // necessary for 2 reasons:
+          // 1] will avoid a breaking error in ccValidation binding where valueAccessor().error()
+          // is not a function
+          // 2] allows form handler to check isModified state on all properties
+          // for unsaved changes dialog to work properly
+          property.extend({ validatable: true });
+
+          //Create a viewModel to be rendered by the propertyEditor template.
+          //Copy all passed attributes to the editorViewModel.
+          editorViewModel = {
+            writable: ko.observable(true), //Default writable status
+            visible: ko.observable(true), //Default visibility status
+            currentDate: date, //Default current date
+            minDate: minDate,
+            valueUpdate: 'change', //Default valueUpdate
+            numericValidationErrorMessage: numericValidationErrorMessage,
+          };
+
+          for(key in values) {
+            if(values.hasOwnProperty(key)) {
+              if(key === 'writable' &amp;&amp; !ko.isObservable(values[key])){
+                editorViewModel.writable(values[key]);
+              }
+              else {
+                editorViewModel[key] = values[key];
+              }
+            }
+          }
+          // Catches validation errors for jet's input number
+          var customJetOptionChangeListener = function(event, data) {
+            var prop = null,
+                context = ko.contextFor(this),
+                currencyMap = context.$parent.type === 'currencyMap' ? true : false;
+
+            if(currencyMap) {
+              prop = context.$parent.property()[ko.dataFor(this).id];
+            } else {
+              prop = ko.dataFor(this);
+            }
+
+            prop.numericJetValidation(true);
+
+            if (data['option'] === "messagesShown") {
+              var valid = $(event.target).ojInputText("isValid");
+              if (!valid) {
+                prop.numericJetValidation(false);
+              } else {
+                prop.numericJetValidation(true);
+              }
+            } else {
+              prop.numericJetValidation(true);
+            }
+          };
+
+          // Convert the numbers to appropriate fractions so the number displayed and what gets stored matches.
+          var computedValueWithFractions = ko.pureComputed({
+            read : function() {
+              return property();
+            },
+            write : function(value) {
+              var fractionToFixed = editorViewModel.fractionalDigits, isADigit = false;
+              if(ko.utils.unwrapObservable(editorViewModel.type) === "digit") {
+                isADigit = true;
+              }
+              if (value != undefined) {
+                if(!fractionToFixed) {
+                  var decimals = value.toString().split(".");
+                  if(decimals &amp;&amp; decimals.length == 2){
+                    if (isADigit) {
+                      property(value.toFixed(0));
+                      return;
+                    }
+                    if(decimals[1].length > 3) {
+                      property(value.toFixed(3));
+                    } else {
+                      property(value);
+                    }
+                  } else {
+                    property(value);
+                  }
+                } else {
+                  property(value.toFixed(fractionToFixed));
+                }
+              } else {
+                property(value);
+              }
+            }
+          });
+
+          setValuesFromObservable(property, editorViewModel);
+
+          if (values.writable === false) {
+            editorViewModel.writable(false);
+          }
+
+          // Help text (if any) is displayed when there isn't a status message
+          editorViewModel.helpText = ko.observable(ko.utils.unwrapObservable(values.helpText));
+
+          // Returns true if the field (like product name) is required, but
+          // user has modified it and left it blank. Otherwise returns false.
+          editorViewModel.isRequiredButMissing = ko.computed(function() {
+            return (editorViewModel.required &amp;&amp; ko.isObservable(editorViewModel.property.isModified) &amp;&amp; editorViewModel.property.isModified() &amp;&amp; editorViewModel.property()==null);
+          }, editorViewModel);
+
+          editorViewModel.titleText = ko.computed(function() {
+            var newTitleText = '';
+
+            if (editorViewModel.property.hasOwnProperty('isValid')) {
+              if (editorViewModel.property.isValid()) {
+                newTitleText = editorViewModel.helpText();
+              }
+              else {
+                newTitleText = editorViewModel.property.error;
+              }
+            }
+            else {
+              newTitleText = editorViewModel.helpText();
+            }
+
+            return newTitleText;
+          }, editorViewModel);
+
+          //Setup template values which mimic the binding of a template.
+          templateValues = {};
+          var typeEditor = ko.utils.unwrapObservable(editorViewModel.type);
+          // Passing appropriate fractionaldigits arguments For prices and digit type of entries for the jet inut number converter
+          //For rest of the decimal numbers, jet uses default maxFractionalDigits = 3 and minFractionalDigits = 0
+          if (typeEditor === "currency" || typeEditor === "currencyMap" || typeEditor === "digit") {
+            if (typeEditor == "currency" || typeEditor === "currency") {
+              editorViewModel.fractionalDigits = currencyHelper.currencyObject().fractionalDigits;
+            } else {
+              editorViewModel.fractionalDigits = 0;
+              editorViewModel.numericValidationErrorMessage = CCi18n.t('ns.common:resources.digitValidation');
+            }
+            
+            if(typeEditor !== 'currencyMap') {
+              typeEditor = "number";  
+            }           
+
+          }
+          templateValues.name = PROPERTY_EDITOR_PREFIX + typeEditor;
+
+          /*
+           * The following editorViewModel properties are not observable
+           * because they are only expected to change when the parent
+           * binding changes (which will re-render the template anyways).
+           */
+
+          // Try to get the id of the nearest form.
+          var nearestUsefulId = $(pElement).closest('form').attr('id');
+
+          // If this didn't work out, try for id of nearest div.
+          if (!nearestUsefulId) {
+            nearestUsefulId = $(pElement).parent().attr('id');
+          }
+
+          // Set up a base ID to prefix all elements displayed in the propertyEditor template using the base ID we got.
+          editorViewModel.idBase = nearestUsefulId + '-' + templateValues.name + '-' + (id ? id + '-' : '');
+
+          if(typeEditor === 'currencyMap') {
+            for(key in property()) {
+              if(property().hasOwnProperty(key)) {
+                property()[key].formId = editorViewModel.idBase + key + '-field';
+              }
+            }
+          } else {
+            property.formId = editorViewModel.idBase + 'field';
+          }
+
+          //Add the view model to the templateValues.
+          templateValues.data = editorViewModel;
+
+          // templateValues['if'] = ko.utils.unwrapObservable(values['if']);
+          templateValues['if'] = ko.utils.unwrapObservable(values['if']) ||
+            typeof ko.utils.unwrapObservable(values['if']) === 'undefined';
+
+          //The property is required if either the property itself or the binding claims so.
+          editorViewModel.required = ko.utils.unwrapObservable(editorViewModel.required || property.required);
+
+          // if this is a currencyMap we need to apply to the child observables
+          if(editorViewModel.type === 'currencyMap') {
+            $.each(editorViewModel.property(), function(ii) {
+              editorViewModel.property()[ii].validate = validate;
+              editorViewModel.property()[ii].numericJetValidation = ko.observable(true);
+              editorViewModel.property()[ii].addonFocusInput = addonFocusInput;
+            });
+          } else {
+            editorViewModel.validate = validate;
+            editorViewModel.numericJetValidation = numericJetValidation;
+            editorViewModel.addonFocusInput = addonFocusInput;
+          }
+
+          editorViewModel.clearValueFunction = clearValueFunction;
+
+          if (editorViewModel.type === "revealablePassword") {
+            editorViewModel.togglePasswordVisibility = togglePasswordVisibility;
+            editorViewModel.clickOrKeydownToUpdatePassword = clickOrKeydownToUpdatePassword;
+            editorViewModel.blurPasswordField = blurPasswordField;
+            editorViewModel.keyUpInPasswordField = keyUpInPasswordField;
+          } else if(editorViewModel.type === "number" || editorViewModel.type === "currency" || editorViewModel.type === "digit" || ko.isObservable(editorViewModel.type) &amp;&amp; editorViewModel.type() === "number") {
+            editorViewModel.customJetOptionChangeListener = customJetOptionChangeListener;
+            editorViewModel.computedValueWithFractions = computedValueWithFractions;
+          } else if(editorViewModel.type === "currencyMap") {
+            $.each(editorViewModel.property(), function(ii) {
+              editorViewModel.property()[ii].customJetOptionChangeListener = customJetOptionChangeListener;
+              editorViewModel.property()[ii].computedValueWithFractions = computedValueWithFractions;
+            });
+          }
+          
+          if((editorViewModel.type === "date-ojet") || (editorViewModel.type === "time-ojet") || (editorViewModel.type === "date-time-ojet")) {
+            editorViewModel.validateOjetDate = validateOjetDate;
+            editorViewModel.validateOjetTime = validateOjetTime;
+            editorViewModel.dateTitleText = CCi18n.t('ns.common:resources.datePicker');
+            editorViewModel.timeTitleText = CCi18n.t('ns.common:resources.timePicker');
+          } else if (ko.isObservable(editorViewModel.type) &amp;&amp; ((editorViewModel.type() === "date-ojet") || (editorViewModel.type() === "time-ojet") || (editorViewModel.type === "date-time-ojet"))) {
+            editorViewModel.validateOjetDate = validateOjetDate;
+            editorViewModel.validateOjetTime = validateOjetTime;
+            editorViewModel.dateTitleText = CCi18n.t('ns.common:resources.datePicker');
+            editorViewModel.timeTitleText = CCi18n.t('ns.common:resources.timePicker');
+          }
+          //Render the template
+          ko.bindingHandlers.template.update(pElement,
+            function() { return templateValues;},
+            pAllBindingsAccessor, editorViewModel, pBindingContext);
+        }
+      };
+    })();
+
+    /** @namespace ko.bindingHandlers */
+
+    /**
+     * The inTabFlow binding takes a boolean value as a parameter and sets
+     * the tabindex attribute, of all descendant input elements or a specific link element, appropriately.
+     *
+     * NB: The jQuery ':input' selector is used here to selects all input,
+     * textarea, select and button elements.
+     * This is helpful to add/remove inputs from the tab flow when they can be
+     * hidden, for example, by the Bootstrap collapse functionality.
+     *
+     * @public
+     * @class
+     * @example &amp;lt;div data-bind="inTabFlow: booleanValue" ... &amp;gt;
+     */
+    ko.bindingHandlers.inTabFlow = {
+      /**
+       * update is run whenever an observable in the binding's properties
+       * changes.
+       * @private
+       * @function
+       * @param {object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns all of the values associated with this binding
+       */
+      update: function(element, valueAccessor) {
+        var value = ko.utils.unwrapObservable(valueAccessor());
+
+        // If item itself is a link, enable or disable tabbing depending on value.
+        if ($(element).prop('tagName') == 'A') {
+          $(element).attr('tabindex', value ? 0 : -1);
+        } else {
+          // Item is not a link - set tab index on child input elements
+          $(element).find(":input").attr('tabindex', value ? 0 : -1);
+        }
+      }
+    };
+
+    /**
+     *  The validatableValue binding wraps the standard value binding.
+     *  It allows an observable to be marked as updated (or modified) when the element,
+     *  which it provides the value for, loses focus.
+     *  This is helpful for required form fields, where empty fields should be marked
+     *  as an error as soon as they lose focus and not just when the value has been
+     *  modified to be empty.
+     *  we can ignore the default blur by passing the ignoreBlur as true.
+     *  which will not show the error messages even if we focus out. for example in case of
+     *  cancel scenarios, we can pass this true then it will not show the message before cancel.
+     *
+     *  @public
+     *  @class ko.bindingHandlers.validatableValue
+     *  @example &amp;lt;input data-bind="validatableValue: inputValue" ...&amp;gt;
+     */
+    ko.bindingHandlers.validatableValue = {
+      /**
+       * The logic run once to initialize the binding for this element.
+       * Adds an event handler for onBlur
+       * @private
+       * @function
+       * @param {object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns all of the values associated with this binding
+       * @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element
+       * @param {object} viewModel The viewModel that is the current context for this binding.
+       * @param {object} bindingContext The binding hierarchy for the current context
+       */
+      init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var valueObservable = valueAccessor();
+        var ignoreBlur = bindingContext.$parent.ignoreBlur;
+        $(element).blur(function() {
+          if(ignoreBlur &amp;&amp; ignoreBlur()) {
+            return true;
+          }
+          // Value must be set as modified for validation message to be shown
+          if(valueObservable.isModified &amp;&amp; ko.isObservable(valueObservable.isModified)) {
+            valueObservable.isModified(true);
+          }
+        });
+
+        if(valueObservable.rules &amp;&amp; ko.isObservable(valueObservable.rules)) {
+          // set the required attribute if the observable is required
+          var rulesLength = valueObservable.rules().length;
+
+          for(var i=0; i&lt;rulesLength; ++i){
+            if(valueObservable.rules()[i].rule === "required"){
+              if(valueObservable.rules()[i].params === true){
+                $(element).attr("required", "required");
+              }
+              break;
+            }
+          }
+        }
+
+        ko.bindingHandlers.value.init(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+      },
+
+      /**
+       * Update is invoked whenever an observable in the binding's properties
+       * changes.
+       * @private
+       * @function
+       * @param {object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns all of the values associated with this binding
+       * @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element
+       * @param {object} viewModel The viewModel that is the current context for this binding.
+       * @param {object} bindingContext The binding hierarchy for the current context
+       */
+      update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        ko.bindingHandlers.value.update(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+      }
+    };
+
+
+    /**
+     * The validatableTarget binding is a variation on validatableValue.
+     * It allows an observable to be marked as updated (or modified) when an element
+     * loses focus, but where the observable in question does not provide the value.
+     * This is helpful for select fields, where different observables may hold the
+     * currently selected value (e.g. 'us') and the actual value (e.g. 'United States')
+     * to be used for validation purposes.
+     *
+     * @public
+     * @class ko.bindingHandlers.validatableTarget
+     * @example &amp;lt;select data-bind="value: optionObservable, validatableTarget: targetObservable" ...&amp;gt;
+     */
+    ko.bindingHandlers.validatableTarget = {
+      /**
+       * The logic run once to initialize the binding for this element.
+       * Adds an event handler for onBlur.
+       * @private
+       * @function
+       * @param {object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns all of the values associated with this binding
+       * @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element
+       * @param {object} viewModel The viewModel that is the current context for this binding.
+       * @param {object} bindingContext The binding hierarchy for the current context
+       */
+      init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var targetObservable = valueAccessor();
+
+        $(element).blur(function() {
+          // Value must be set as modified for validation message to be shown
+          if(targetObservable.isModified &amp;&amp; ko.isObservable(targetObservable.isModified)) {
+            targetObservable.isModified(true);
+          }
+        });
+      }
+    };
+
+    /**
+     * ccLink is a binding that allows us to use keywords to derive the href for links. Keyword mappings are
+     * stored on the widget view model. When we resolve a ccLink, we start on the current widget context,
+     * and walk up through the widget parents until we find a link that matches the keyword.
+     *
+     * @public
+     * @class ko.bindingHandlers.ccLink
+     * @example &amp;lt;a data-bind="ccLink: 'cart'"&amp;gt;
+     */
+    ko.bindingHandlers.ccLink = {
+      /**
+       * The logic run once to initialize the binding for this element.
+       * @private
+       * @function
+       * @param {HTMLElement} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns all of the values associated with this binding
+       * @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element
+       * @param {object} viewModel The viewModel that is the current context for this binding.
+       * @param {object} bindingContext The binding hierarchy for the current context
+       */
+      init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        // If we are using the histor api, then we'll use pushState to update the browser url/history
+        // Additionally we'll add a click handler to "preventDefault" on the tag so we don't go
+        // back to the server again
+        element.addEventListener("click", function(e) {
+          var data = {usingCCLink:true};
+          // Trigger unsaved changes event if needs be
+          $(element).trigger('click.cc.unsaved', data);
+
+          if (!data.preventDefault) {
+            var url = element.pathname + element.search;
+            // If we are already on the url, don't push that url again
+            if(window.location.pathname !== url)
+              navigation.goTo(url);
+          }
+          else {
+            e.stopImmediatePropagation();
+          }
+
+          e.preventDefault();
+          return false;
+        }, false);
+
+        // This will be called when the binding is first applied to an element
+        // Set up any initial state, event handlers, etc. here
+        var valueObject = ko.utils.unwrapObservable(valueAccessor());
+        var parents;
+        var link = valueObject; // link gets set to the object we are linking to
+        if (!valueObject) {
+          return;
+        }
+        // Page is a special case in that we need to look up
+        // the link data
+        // Guess what is going on based off the type passed into 'value'
+        // for example assume 'string' is page and for 'object'
+        // we read values for displayName and url directly
+        if (typeof valueObject === 'string') {
+          // Walk bindingContext's $parents array to find WidgetViewModel
+          var widget = null;
+          var value = valueObject;
+
+          if (viewModel.links) {
+            widget = viewModel;
+          } else {
+            parents = bindingContext.$parents;
+            // Walk the parents array, it's in there somewhere.
+            for (var i = 0; i &lt; parents.length; i++) {
+              if (parents[i].links) {
+                widget = parents[i];
+                break;
+              }
+            }
+          }
+          if (widget) {
+            // if it's a page look it up here
+            link = widget.links()[value];
+            // otherwise read the value from the thing we are linking from
+          }
+        }
+        if (link) {
+          var target = "";
+
+          if(link.url) {
+            target = link.url;
+          }
+          // categories, products, pages have routes instead of urls
+          else if(link.route) {
+            target = link.route;
+          }
+          var finalTarget = target;
+          if (useHashBang) {
+            finalTarget = '#!' + target;
+          }
+
+          var prefix = "";
+
+          if (window.urlLocale) {
+            var browserLanguage = JSON.parse(window.urlLocale)[0].name;
+
+            prefix = "/" + browserLanguage;
+          }
+
+          $(element).prop('href',  prefix + target);
+
+          // If element has no child elements and no text, we'll assume tag should have some text in it if available
+          if($(element).children().size() === 0 &amp;&amp; $.trim($(element).text()) == '') {
+            if(link.displayName) {
+              $(element).text(link.displayName);
+            }
+            else {
+              $(element).text(window.location.href + finalTarget);
+            }
+          }
+        }
+      }
+    };
+
+    ko.bindingHandlers.ccNavigation = {
+
+      /**
+       * Update is invoked whenever an observable in the binding's properties
+       * changes.
+       * @private
+       * @function
+       * @param {object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns all of the values associated with this binding
+       * @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element
+       * @param {object} viewModel The viewModel that is the current context for this binding.
+       * @param {object} bindingContext The binding hierarchy for the current context
+       */
+      update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var value = ko.utils.unwrapObservable(valueAccessor());
+
+        $(element).on('click.cc.nav', function(e) {
+          var url = element.pathname + element.search;
+
+          var data = {usingCCLink:true};
+          // Trigger unsaved changes event if needs be
+          $(element).trigger('click.cc.unsaved', data);
+
+          if (value != 'prevent' &amp;&amp; !data.preventDefault) {
+            navigation.goTo(url);
+          }
+
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return false;
+        });
+      }
+    };
+
+    /**
+     * The triggerMessage binding wraps the standard text &amp; visibility
+     * bindings. It should be used in conjunction with the trigger extender
+     * to display the message when triggered.
+     *
+     * @public
+     * @class ko.bindingHandlers.triggerMessage
+     * @example &amp;lt;span data-bind="triggerMessage: observable" ...&amp;gt;
+     */
+    ko.bindingHandlers.triggerMessage = {
+      /**
+       * update is run whenever an observable in the binding's properties
+       * changes.
+       * @private
+       * @function
+       * @param {object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns all of the values associated with this binding
+       */
+      update: function(element, valueAccessor) {
+
+        var observable = valueAccessor();
+
+        if(observable.triggerFired &amp;&amp; ko.isObservable(observable.triggerFired)) {
+
+          // create a handler to correctly return the message
+          var msgAccessor = function () {
+            if (observable.triggerFired()) {
+              return observable.triggerMessage;
+            } else {
+              return null;
+            }
+          };
+
+          // toggle visibility on message when triggered
+          var visiblityAccessor = function () {
+            if(observable.triggerFired()) {
+              return true;
+            } else {
+              return false;
+            }
+
+          };
+
+          ko.bindingHandlers.text.update(element, msgAccessor);
+          ko.bindingHandlers.visible.update(element, visiblityAccessor);
+        }
+      }
+    };
+
+    /**
+     * The widgetLocaleText binding allows translated strings to be specified for an element which are
+     * looked up by resource key. The bindingValue can be given either as a string or an object. If it's a
+     * string then the translated string will simply be placed in the 'text' slot of the element. If it's an
+     * object then the expected structure is:
+     *
+     * &lt;pre>
+     * {
+   *   value: &amp;lt;resourceName&amp;gt;,
+   *   attr: &amp;lt;name of slot to place resource&amp;gt;,
+   *   params: &amp;lt;Parameterized variable replacement dictionary&amp;gt;,
+   *   custom: &amp;lt;Custom settings for translation&amp;gt;
+   * }
+     * &lt;/pre>
+     *
+     * If attr is undefined, the translated string will be placed in the default 'text' slot.
+     *
+     * @public
+     * @class ko.bindingHandlers.widgetLocaleText
+     * @example &amp;lt;span data-bind="widgetLocaleText: 'resourceName'"&amp;gt;&amp;lt;/span&amp;gt;
+     * @example &amp;lt;span data-bind="widgetLocaleText: {value:'resourceName', attr:'title'}"&amp;gt;&amp;lt;/span&amp;gt;
+     */
+    ko.bindingHandlers.widgetLocaleText = {
+      /**
+       * update is run whenever an observable in the binding's properties
+       * changes.
+       * @private
+       * @function
+       * @param {object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns all of the values associated with this binding
+       */
+      update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var bindingValue = valueAccessor();
+        var resources, token, translatedString;
+
+        var widgetModel;
+
+        // If the view model is the WidgetViewModel, can just access the resources
+        if(viewModel.translate){
+          widgetModel = viewModel;
+        } else {
+          // Otherwise the WidgetViewModel will be in the array of parents somewhere
+          var parents = bindingContext.$parents;
+          for(var i=0;i&lt;parents.length;i++){
+            if(parents[i].translate) {
+              widgetModel = parents[i];
+              break;
+            }
+          }
+        }
+
+        if(typeof bindingValue == 'string') {
+          translatedString = widgetModel.translate(bindingValue,null,true);
+        }
+        else if(typeof bindingValue == 'object' &amp;&amp; bindingValue.value != undefined) {
+          translatedString = widgetModel.translate(bindingValue.value,
+            bindingValue.params,
+            true,
+            bindingValue.custom);
+        }
+
+        if(translatedString) {
+          if((typeof bindingValue == 'string') || (typeof bindingValue == 'object' &amp;&amp; bindingValue.attr == 'innerText')) {
+            $(element).text(translatedString);
+          }
+          else if(typeof bindingValue == 'object' &amp;&amp; bindingValue.attr != undefined) {
+            $(element).attr( bindingValue.attr, translatedString );
+          }
+        }
+      }
+    };
+
+
+    /**
+     * @public
+     * @class The disabled binding conditionally adds the disabled class to an element based on a condition.
+     * Optionally a click event handler can be specified to apply to the element if it's enabled. For &lt;a> tags,
+     * when the condition resovles to false, a click handler specifiying "return false;" will be added to prevent
+     * any navigation from that anchor tag
+     *
+     * @example
+     * &amp;lt;a data-bind="disabled: 'boolean condition'" ...&amp;gt;
+     * &amp;lt;a data-bind="disabled: {condition:'boolean condition',click: eventHandler}" ...&amp;gt;
+     */
+    ko.bindingHandlers.disabled = {
+      'update': function (element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var value = false;
+        var clickEvent, link;
+        var bindingValue = valueAccessor();
+
+        if(typeof bindingValue == 'boolean') {
+          value = ko.utils.unwrapObservable(bindingValue);
+        }
+        else if(typeof bindingValue == 'object' &amp;&amp; bindingValue.condition != undefined) {
+          value = ko.utils.unwrapObservable(bindingValue.condition);
+
+          if(bindingValue.click != undefined) {
+            clickEvent = ko.utils.unwrapObservable(bindingValue.click);
+          }
+
+          if(bindingValue.link != undefined) {
+            link = function() {
+              return ko.utils.unwrapObservable(bindingValue.link);
+            };
+          }
+        }
+
+        if (value) {
+          $(element).off('click.handler');
+
+          var tag = $(element).prop('tagName');
+
+          if('A' == tag) {
+            $(element).attr('href','#');
+          }
+
+          $(element).on('click.handler', function(e){
+            e.stopImmediatePropagation();
+            return false;
+          });
+
+          $(element).addClass('disabled');
+        }
+        else {
+          $(element).removeClass('disabled');
+          $(element).off('click.handler');
+
+          if(clickEvent) {
+
+            $(element).on('click.handler', function() {
+              var clickHandler = clickEvent.bind(viewModel);
+              clickHandler();
+              return false;
+            });
+          }
+
+          if(link) {
+            ko.bindingHandlers['ccLink'].init(element, link, allBindingsAccessor, viewModel, bindingContext);
+          }
+        }
+      }
+    };
+
+    /**
+     * @public
+     * @class The ccDate binding uses cc-date-format.js library to format and localize the date.
+     * The input can be given in any of the standard formats and a return type can be
+     * specified. WidgetViewModel has implementation of the formatting.
+     *
+     *
+     * @example
+     * &lt;div data-bind="ccDate: {date: '12-03-2013', format: 'DD-MM-YYYY', returnedType: 'f+l', separator: 'at'}">&lt;/div>
+     * &lt;div data-bind="ccDate: {date: '12-03-2013', format: 'DD-MM-YYYY', returnedType: 'f'}">&lt;/div>
+     * &lt;div data-bind="ccDate: {date: '12-03-2013', format: 'DD-MM-YYYY', returnedType: '+l'}">&lt;/div>
+     * &lt;div data-bind="ccDate: {date: '12-03-2013', returnedType: 'l+s'}">&lt;/div>
+     * &lt;div data-bind="ccDate: {date: '12-03-2013'"}>&lt;/div>
+     */
+    ko.bindingHandlers.ccDate = {
+      update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var bindingValue = valueAccessor();
+        var value = ko.utils.unwrapObservable(bindingValue);
+        var uDate = ko.utils.unwrapObservable(value.date);
+        var format = ko.utils.unwrapObservable(value.format);
+        var returnedType = ko.utils.unwrapObservable(value.returnedType);
+        var returnedDate = ko.utils.unwrapObservable(value.returnedDate);
+
+        returnedDate = CCDate.formatDateAndTime(uDate, format, returnedType, returnedDate);
+        $(element).text(returnedDate);
+      }
+    };
+
+    /**
+     * @public
+     * @class The dateTime binding uses date-time-utils.js helper class to format and localize the date.
+     * The input can be given in any of the standard formats
+     * @example
+     * &lt;div data-bind="dateTime: {date: '2014-08-22T21:25:00.000Z', format: 'datetime', dateFormat: 'short', timeFormat: 'short'}">&lt;/div>
+     */
+    ko.bindingHandlers.ccDateTime = {
+      update : function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var bindingValue = valueAccessor();
+        var value = ko.utils.unwrapObservable(bindingValue);
+        var uDate = ko.utils.unwrapObservable(value.date);
+        var formatType = ko.utils.unwrapObservable(value.format);
+        var displayDateFormat = ko.utils.unwrapObservable(value.dateFormat);
+        var displayTimeFormat = ko.utils.unwrapObservable(value.timeFormat);
+        var returnedDateTimeDisplay = ko.utils.unwrapObservable(value.date);
+        returnedDateTimeDisplay = dateTimeUtils.getFormattedDateTime(uDate, formatType, displayDateFormat, displayTimeFormat);
+        $(element).text(returnedDateTimeDisplay);
+      }
+    };
+
+    /**
+     * @public
+     * @class The ccNumber binding uses the cc-numberformat.js to format
+     * and internationalize numbers
+     *
+     *
+     * @example
+     * &lt;div data-bind="ccNumber: '1234.5'">&lt;/div>
+     */
+    ko.bindingHandlers.ccNumber = {
+      update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var bindingValue = valueAccessor();
+        var value = ko.utils.unwrapObservable(bindingValue);
+        var returnedNumber = null;
+        returnedNumber = CCNumber.formatNumber(value);
+        $(element).text(returnedNumber);
+      }
+    };
+
+    /**
+     * Helper binding to add a variable to the knockout binding context
+     * widgetLayout can then be accessed on the bindingContext i.e. bindingContext.$widgetLayout.
+     *
+     * @public
+     * @class
+     * @example &amp;lt;!-- ko setContextVariable:{name:'widgetLayout',value:'test'} --&amp;gt;
+     */
+    ko.bindingHandlers.setContextVariable = {
+
+      update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+        var value = ko.utils.unwrapObservable(valueAccessor());
+        bindingContext['$' + value.name] = ko.utils.unwrapObservable(value.value);
+        var i = value;
+      }
+    };
+
+    // allows containerless binding
+    ko.virtualElements.allowedBindings.setContextVariable = true;
+
+    /**
+     * The element binding.
+     * @public
+     * @class
+     * @param {string} type The element type - This determines the template to load
+     * @param {string} id Unique instance ID for element
+     * Will also check for an id value in the allBindingsAccessor
+     * @example
+     * data-bind="element: 'product-title'"
+     * data-bind="element: 'product-title', id: '100004'"
+     * data-bind="element: {type: 'product-title', id: '100004'}"
+     */
+    ko.bindingHandlers.element = {
+      /**
+       * The logic run once to initialize the binding for this element.
+       * Indicates that this binding controls decendantBindings.
+       * @private
+       * @function
+       * @param {Object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns
+       * all of the values associated with this binding.
+       */
+      init: function(element, valueAccessor, allBindingsAccessor, widget, bindingContext) {
+        var values = ko.utils.unwrapObservable(valueAccessor());
+        var mappingBase = widget.jsPath() + '/';
+
+        for (var key in widget.elementsJs) {
+          if (values === key) {
+
+            if(widget.elementsJs.hasOwnProperty(key)) {
+              var elementJs = widget.elementsJs[key]();
+
+              if (elementJs !== null) {
+
+                var BASE_URL_END_STRING = 'widget/';
+
+                var urlSeparatorIndex = elementJs.indexOf(BASE_URL_END_STRING)
+                  + BASE_URL_END_STRING.length;
+                var jsMappingBase =
+                  elementJs.substring(0, urlSeparatorIndex - 1);
+                var jsIdx = elementJs.lastIndexOf('.');
+
+                require({baseUrl: mappingBase}, [elementJs], function(js) {
+
+                  if (typeof js === 'function') {
+                    js();
+                  }
+                  else if (js.hasOwnProperty('onLoad')
+                    &amp;&amp; typeof js.onLoad === 'function') {
+                    js.onLoad(widget);
+                  }
+
+                  var elementName = js.elementName;
+
+                  // Store element JS in widget property &lt;elementName> provided
+                  // that it does not clash with existing widget property
+                  if (widget.hasOwnProperty(elementName)) {
+                    CCLogger.warn("Element name " + elementName +
+                        " is same as existing property");
+                  }
+                  else {
+                    widget[elementName] = js;
+                  }
+
+                  widget.elements[elementName] = js;
+
+                  // Block is asynchronous so reset widget as initialized
+                  if (widget.initialized()) {
+                    widget.initialized.valueHasMutated();
+                  }
+                });
+              }
+            }
+
+          }
+        }
+
+        return {'controlsDescendantBindings' : true};
+      },
+
+      /**
+       * update is run whenever an observable in the binding's properties
+       * changes.
+       * @private
+       * @function
+       * @param {object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns all of the values associated with this binding
+       * @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element
+       * @param {object} viewModel The viewModel that is the current context for this binding.
+       * @param {object} bindingContext The binding hierarchy for the current context
+       */
+      update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var value = ko.utils.unwrapObservable(valueAccessor());
+        var type, id;
+
+        if (!value) {
+          return;
+        }
+
+        if(typeof(value) === "string") {
+          type = value;
+        } else if(typeof value === "object" &amp;&amp; value.type != undefined) {
+          type = value.type;
+
+          if(value.id != undefined) {
+            id = value.id;
+          }
+        } else {
+          return;
+        }
+
+        if(!id || id === "") {
+          if(allBindingsAccessor().id &amp;&amp; allBindingsAccessor().id !== "") {
+            id = allBindingsAccessor().id;
+          } else {
+            id = "id";
+          }
+        }
+
+        var widgetId = (bindingContext.$data.id &amp;&amp; bindingContext.$data.id()) ? bindingContext.$data.id() : "";
+        var widgetType = (bindingContext.$data.typeId &amp;&amp; bindingContext.$data.typeId()) ? bindingContext.$data.typeId() : "";
+
+        var elementInstance = {};
+        elementInstance.type = type;
+        elementInstance.fullType = widgetType + "-" + type;
+        elementInstance.id = id;
+        elementInstance.textId = "text." + id;
+        elementInstance.elementId = widgetId +"-" + type + "-" + id;
+
+        elementInstance.styles = "";
+
+        if(id !== "" &amp;&amp; bindingContext.$elementConfig) {
+          elementInstance.config = bindingContext.$elementConfig[id];
+
+          if(elementInstance.config &amp;&amp; elementInstance.config.font) {
+            elementInstance.styles = elementInstance.config.font.styles || "";
+
+            // If we are a block level element with an associated font,
+            // check for padding and it to the wrapper tag as an inline style.
+            if (elementInstance.config.font.styles.display &amp;&amp; elementInstance.config.font.styles.display === "block" &amp;&amp;
+                elementInstance.config.padding &amp;&amp;
+                (elementInstance.config.padding.paddingTop > 0 || elementInstance.config.padding.paddingBottom > 0 ||
+                 elementInstance.config.padding.paddingLeft > 0 || elementInstance.config.padding.paddingRight > 0)) {
+              /* top | right | bottom | left */
+              elementInstance.styles["padding"] = elementInstance.config.padding.paddingTop + "px " +
+                  elementInstance.config.padding.paddingRight + "px " +
+                  elementInstance.config.padding.paddingBottom + "px " +
+                  elementInstance.config.padding.paddingLeft + "px";
+            }
+          }
+        }
+
+        // Set ID and styles on the current element
+        // (i.e. the one with the element binding)
+        $(element).attr('id', elementInstance.elementId);
+        if (elementInstance.styles != "") {
+          $(element).css(elementInstance.styles);
+        }
+        bindingContext['$elementInstance'] = elementInstance;
+
+        // Setup template values which mimic the binding of a template.
+        var templateValues = {};
+        templateValues.name = elementInstance.fullType;
+        templateValues.data = viewModel;
+        templateValues.url = "";
+
+        //Render the template
+        ko.bindingHandlers.template.update(element,
+          function() {
+            return templateValues;
+          }, allBindingsAccessor, viewModel, bindingContext
+        );
+
+      }
+
+    };
+
+    /**
+     * The addTemplateBinding
+     * @public
+     * @class
+     * @param {string} type The template code to add
+     */
+    ko.bindingHandlers.addTemplate = {
+      /**
+       * update is run whenever an observable in the binding's properties
+       * changes.
+       * @private
+       * @function
+       * @param {object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns all of the values associated with this binding
+       * @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element
+       * @param {object} viewModel The viewModel that is the current context for this binding.
+       * @param {object} bindingContext The binding hierarchy for the current context
+       */
+      update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var value = ko.utils.unwrapObservable(valueAccessor());
+
+        if(typeof(value) === "string") {
+
+          $(value).not('text').each( function() {
+            var id = this.id;
+
+            if(id &amp;&amp; id !== "") {
+              if($('body').find('#'+id).length == 0) {
+                $('body').append(this);
+              }
+            }
+          });
+
+        } else {
+          CCLogger.debug("addTemplate binding: value did not resolve to String");
+        }
+      }
+    };
+
+    // allows containerless binding
+    ko.virtualElements.allowedBindings.addTemplate = true;
+
+    /**
+     * The embeddedAssistance extender works with the password validator to provide an embedded assistance
+     * for a password field in case there is an error in the password validation.
+     * @public
+     * @class
+     * @param {Object} element The DOM element attached to this binding
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     */
+    ko.bindingHandlers.embeddedAssistance = {
+      /**
+       * The logic run once to initialize the binding for this element.
+       * Indicates that this binding controls decendantBindings.
+       * @private
+       * @function
+       * @param {Object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns
+       * all of the values associated with this binding.
+       * @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element
+       * @param {object} viewModel The viewModel that is the current context for this binding.
+       * @param {object} bindingContext The binding hierarchy for the current context
+       */
+      init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var observable = valueAccessor();
+        observable.subscribe(function(){
+          ko.bindingHandlers.embeddedAssistance.update(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+        });
+      },
+
+      /**
+       * update is run whenever an observable in the binding's properties changes.
+       * @private
+       * @function
+       * @memberOf embeddedAssistance
+       * @name update
+       * @param {object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns all of the values associated with this binding
+       * @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element
+       * @param {object} viewModel The viewModel that is the current context for this binding.
+       * @param {object} bindingContext The binding hierarchy for the current context
+       */
+      update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var observable = valueAccessor();
+
+        observable.extend({ validatable: true });
+
+        var isModified = false;
+        var isValid = false;
+
+        isModified = observable.isModified() &amp;&amp; observable().length > 0;
+        isValid = observable.isValid();
+
+        // create a handler to correctly return embedded assistance
+        var embeddedMessageAccessor = function () {
+          if (isModified) {
+            return isValid ? null : observable.embeddedAssistance;
+          } else {
+            return null;
+          }
+        };
+
+        //toggle visibility on validation messages when validation hasn't been evaluated, or when the object isValid
+        var visiblityAccessor = function () {
+          return isModified ? !isValid : false;
+        };
+
+        ko.bindingHandlers.text.update(element, embeddedMessageAccessor);
+        ko.bindingHandlers.visible.update(element, visiblityAccessor);
+      }
+    };
+
+    /** @namespace ko.extenders */
+
+    /**
+     * The propertyWatch extender provides the ability to listen for any changes within an
+     * observable object's properties, without having to subscribe to each property individually.
+     *
+     * @public
+     * @function
+     * @param {observable ...} root Base observable to watch for changes.
+     * @example
+     * myObservable = ko.observable().extend({ propertyWatch: myObservable });
+     *
+     * myObservable.hasChanged.subscribe(function(hasChanged){...});
+     */
+    ko.extenders.propertyWatch = function (root) {
+
+      root.initialState = ko.observable(ko.toJSON(root));
+
+      root.resetWatch = function() {
+        root.initialState(ko.toJSON(root));
+      };
+
+      root.hasChanged = ko.computed(function() {
+        var changed = root.initialState() !== ko.toJSON(root);
+
+        if (changed) {
+          root.resetWatch();
+        }
+        return changed;
+      }).extend({notify: "always", throttle: 100})
+        .extend({notify: "always"});
+
+      return root;
+    };
+
+    /**
+     * The trigger extender allows a message to be triggered when the
+     * observable has a given value. This extender should be used in conjunction
+     * with the triggerMessage binding, which will display the message.
+     * This could possibly be reworked, at a later date, to accept a list of
+     * values or multiple value:message pairs, but for now it does what's needed.
+     *
+     * @public
+     * @function
+     * @param {observable ...} observable The target observable.
+     * @param {Object} params A trigger value for the observable and a message that
+     * is to be triggered when the observable has that value.
+     * @example
+     * myObservable = ko.observable().extend({ trigger: {value: myTriggerValue, message: myTriggerMessage} });
+     */
+    ko.extenders.trigger = function(observable, params) {
+
+      observable.triggerSet     = false;
+      observable.triggerValue   = null;
+      observable.triggerMessage = '';
+
+      observable.triggerFired   = ko.observable(false);
+
+      if(params) {
+        if(params.value) {
+          observable.triggerValue = params.value;
+          observable.triggerSet = true;
+        }
+
+        if(params.message) {
+          observable.triggerMessage = params.message;
+        }
+      }
+
+      observable.trigger = function(newValue) {
+        if(observable() ===  observable.triggerValue) {
+          observable.triggerFired(true);
+        } else {
+          observable.triggerFired(false);
+        }
+      };
+
+      observable.clearTrigger = function() {
+        observable.triggerFired(false);
+      };
+
+      if(observable.triggerSet) {
+        // listen for changes to the observable
+        observable.subscribe(observable.trigger);
+      }
+
+      return observable;
+    };
+    
+    /**
+     * The accessControl binding to restrict elements according to the role.
+     * The accessKey has to be given in the binidng which has to be restricted.
+     * The accessKey is verified against the role of the current admin profile.
+     * If the accessKey exists in the allowedAccesses for the profile the element 
+     * will be shown else it has to be hidden.
+     * 
+     * Supports both strong binding as well as virtual element binding.
+     *
+     * @example
+     * &lt;div id="cc-publish-dropdown" class="btn-group pull-right"  data-bind="accessControl: {accessKey: 'publishing-button'}">
+     * 
+     * &lt;!-- ko accessControl: {accessKey: 'publishing-title'} -->
+     *       &lt;h2 class="cc-page-title" data-bind="localeText: 'updatesToPublishText'">&lt;/h2>
+     * &lt;!-- /ko -->
+     * 
+     */
+      ko.bindingHandlers.accessControl = {
+          init : function(element, valueAccessor, allBindingsAccessor) { 
+            var accessControl = allBindingsAccessor().accessControl;
+            var defaultAction = accessControl.defaultAction ? accessControl.defaultAction : CCConstants.HIDE;
+
+            if (!profileHelper.isAuthorized(accessControl.accessKey)) {
+              // if this is not a virtual binding, show/hide only that element
+              if(defaultAction === CCConstants.SHOW){
+                //any action incase of showing element
+              }else{
+                $(element).hide();
+                ko.virtualElements.emptyNode(element);
+              }
+            }else{
+              if(defaultAction === CCConstants.SHOW){
+                $(element).hide();
+                ko.virtualElements.emptyNode(element);
+              }else{
+              }
+            }
+          }
+      };
+    //allows containerless binding, i.e., virtual element binding
+    ko.virtualElements.allowedBindings.accessControl = true;
+    
+  });
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Index</a></h2><h3>Modules</h3><ul><li><a href="module-ccKoErrorWrapper.html">ccKoErrorWrapper</a></li><li><a href="module-ccKoExtensions.html">ccKoExtensions</a></li></ul><h3>Classes</h3><ul><li><a href="Address.html">Address</a></li><li><a href="CartViewModel.html">CartViewModel</a></li><li><a href="DynamicProperty.html">DynamicProperty</a></li><li><a href="EventDispatcher.html">EventDispatcher</a></li><li><a href="GiftCardViewModel.html">GiftCardViewModel</a></li><li><a href="GiftProductListingViewModel.html">GiftProductListingViewModel</a></li><li><a href="ko.bindingHandlers.background.html">background</a></li><li><a href="ko.bindingHandlers.carouselSwipe.html">carouselSwipe</a></li><li><a href="ko.bindingHandlers.ccForm.html">ccForm</a></li><li><a href="ko.bindingHandlers.ccLink.html">ccLink</a></li><li><a href="ko.bindingHandlers.ccValidation.html">ccValidation</a></li><li><a href="ko.bindingHandlers.checkbox.html">checkbox</a></li><li><a href="ko.bindingHandlers.chosen.html">chosen</a></li><li><a href="ko.bindingHandlers.contextResourcesNamespace.html">contextResourcesNamespace</a></li><li><a href="ko.bindingHandlers.currency.html">currency</a></li><li><a href="ko.bindingHandlers.datepicker.html">datepicker</a></li><li><a href="ko.bindingHandlers.datepopover.html">datepopover</a></li><li><a href="ko.bindingHandlers.draggable.html">draggable</a></li><li><a href="ko.bindingHandlers.droppable.html">droppable</a></li><li><a href="ko.bindingHandlers.fade.html">fade</a></li><li><a href="ko.bindingHandlers.hover.html">hover</a></li><li><a href="ko.bindingHandlers.imageSource.html">imageSource</a></li><li><a href="ko.bindingHandlers.imageZoom.html">imageZoom</a></li><li><a href="ko.bindingHandlers.localeText.html">localeText</a></li><li><a href="ko.bindingHandlers.makeAccess.html">makeAccess</a></li><li><a href="ko.bindingHandlers.modal.html">modal</a></li><li><a href="ko.bindingHandlers.modalTabbingContraint.html">modalTabbingContraint</a></li><li><a href="ko.bindingHandlers.onRender.html">onRender</a></li><li><a href="ko.bindingHandlers.popeditor.html">popeditor</a></li><li><a href="ko.bindingHandlers.popover.html">popover</a></li><li><a href="ko.bindingHandlers.productImageSource.html">productImageSource</a></li><li><a href="ko.bindingHandlers.propertyEditor.html">propertyEditor</a></li><li><a href="ko.bindingHandlers.radio.html">radio</a></li><li><a href="ko.bindingHandlers.richTextEditor.html">richTextEditor</a></li><li><a href="ko.bindingHandlers.scrollAffix.html">scrollAffix</a></li><li><a href="ko.bindingHandlers.select2.html">select2</a></li><li><a href="ko.bindingHandlers.select2Tags.html">select2Tags</a></li><li><a href="ko.bindingHandlers.selectable.html">selectable</a></li><li><a href="ko.bindingHandlers.slickList.html">slickList</a></li><li><a href="ko.bindingHandlers.slide.html">slide</a></li><li><a href="ko.bindingHandlers.slider.html">slider</a></li><li><a href="ko.bindingHandlers.spectrum.html">spectrum</a></li><li><a href="ko.bindingHandlers.tagsInput.html">tagsInput</a></li><li><a href="ko.bindingHandlers.textCheck.html">textCheck</a></li><li><a href="ko.bindingHandlers.timepicker.html">timepicker</a></li><li><a href="ko.bindingHandlers.triggerMessage.html">triggerMessage</a></li><li><a href="ko.bindingHandlers.validatableTarget.html">validatableTarget</a></li><li><a href="ko.bindingHandlers.validatableValue.html">validatableValue</a></li><li><a href="ko.bindingHandlers.widgetLocaleText.html">widgetLocaleText</a></li><li><a href="koValidation.alphaNumeric.html">alphaNumeric</a></li><li><a href="koValidation.alphaNumericNoSpaces.html">alphaNumericNoSpaces</a></li><li><a href="koValidation.alphaNumericNoSpacesWithSeperators.html">alphaNumericNoSpacesWithSeperators</a></li><li><a href="koValidation.alphaNumericWithSeperators.html">alphaNumericWithSeperators</a></li><li><a href="koValidation.bool.html">bool</a></li><li><a href="koValidation.creditcard.html">creditcard</a></li><li><a href="koValidation.cvv.html">cvv</a></li><li><a href="koValidation.endmonth.html">endmonth</a></li><li><a href="koValidation.endyear.html">endyear</a></li><li><a href="koValidation.importFileName.html">importFileName</a></li><li><a href="koValidation.laterDate.html">laterDate</a></li><li><a href="koValidation.match.html">match</a></li><li><a href="koValidation.mediaZipFileName.html">mediaZipFileName</a></li><li><a href="koValidation.number.html">number</a></li><li><a href="koValidation.observablePattern.html">observablePattern</a></li><li><a href="koValidation.password.html">password</a></li><li><a href="koValidation.price.html">price</a></li><li><a href="koValidation.propertyIdAlreadyInUse.html">propertyIdAlreadyInUse</a></li><li><a href="koValidation.propertyNameAlreadyInUse.html">propertyNameAlreadyInUse</a></li><li><a href="koValidation.restrictSlashCharacters.html">restrictSlashCharacters</a></li><li><a href="koValidation.startmonth.html">startmonth</a></li><li><a href="koValidation.startyear.html">startyear</a></li><li><a href="koValidation.uniqueTrimmed.html">uniqueTrimmed</a></li><li><a href="koValidation.uniqueTrimmedCaseInsensitive.html">uniqueTrimmedCaseInsensitive</a></li><li><a href="koValidation.url.html">url</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.addTemplate.html">addTemplate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDate.html">ccDate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDateTime.html">ccDateTime</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccNumber.html">ccNumber</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.disabled.html">disabled</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.element.html">element</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.embeddedAssistance.html">embeddedAssistance</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.inTabFlow.html">inTabFlow</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.setContextVariable.html">setContextVariable</a></li><li><a href="NavStateViewModel.html">NavStateViewModel</a></li><li><a href="OrderHistoryViewModel.html">OrderHistoryViewModel</a></li><li><a href="OrderViewModel.html">OrderViewModel</a></li><li><a href="ParentOrganisation.html">ParentOrganisation</a></li><li><a href="ProductListingSearchViewModel.html">ProductListingSearchViewModel</a></li><li><a href="ProductListingViewModel.html">ProductListingViewModel</a></li><li><a href="ProductViewModel.html">ProductViewModel</a></li><li><a href="PubSub.topicNames.html">topicNames</a></li><li><a href="resetCVV.html">resetCVV</a></li><li><a href="resetPaymentDetails.html">resetPaymentDetails</a></li><li><a href="SearchRestClient.html">SearchRestClient</a></li><li><a href="UserViewModel.html">UserViewModel</a></li><li><a href="WidgetViewModel.html">WidgetViewModel</a></li><li><a href="WishlistContentViewModel.html">WishlistContentViewModel</a></li></ul><h3>Namespaces</h3><ul><li><a href="ko.bindingHandlers.html">bindingHandlers</a></li><li><a href="ko.extenders.html">extenders</a></li><li><a href="koValidation.html">koValidation</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CCEETagProcessor">CCEETagProcessor</a></li><li><a href="global.html#isValidDeterminewhetherornotthepaymentdetailsobjectisvalidbasedonthevalidityofitscomponentparts.Thiswillnotcauseerrormessagestobedisplayedforanyobservablevaluesthatareunchangedandhaveneverreceivedfocusontherelatedformfield(s).">isValid
+Determine whether or not the payment details object is valid
+based on the validity of its component parts. This will not
+cause error messages to be displayed for any observable values
+that are unchanged and have never received focus on the 
+related form field(s).</a></li><li><a href="global.html#validatePaymentDetailsForceallrelevantmemberobservablestoperformtheirvalidationnow&displaytheerrors(ifany)">validatePaymentDetails
+Force all relevant member observables to perform their
+validation now & display the errors (if any)</a></li></ul>
+</nav>
+
+<br clear="both">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0</a> on Mon Oct 10 2016 10:49:03 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

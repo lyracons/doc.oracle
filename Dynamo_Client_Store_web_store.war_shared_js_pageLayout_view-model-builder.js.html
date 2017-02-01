@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Dynamo/Client/Store/web/store.war/shared/js/pageLayout/view-model-builder.js</title>
+    
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    
+    <h1 class="page-title">Source: Dynamo/Client/Store/web/store.war/shared/js/pageLayout/view-model-builder.js</h1>
+    
+    
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source"><code>/**
+ * @fileoverview View Model Builder that constructs view models based off
+ * of input JSON and determines the view model behavior
+ *
+ *
+ */
+define(
+  //-------------------------------------------------------------------
+  // PACKAGE NAME
+  //-------------------------------------------------------------------
+  'pageLayout/view-model-builder',
+
+  //-------------------------------------------------------------------
+  // DEPENDENCIES
+  //-------------------------------------------------------------------
+  ['knockout'],
+
+  //-------------------------------------------------------------------
+  // MODULE DEFINITION
+  //-------------------------------------------------------------------
+  function (ko) {
+
+    "use strict";
+
+    //-----------------------------------------------------------------
+    // Class definition &amp; member variables
+    //-----------------------------------------------------------------
+    /**
+     * @namespace ViewModelBuilder
+     * @name ViewModelBuilder
+     * @private
+     * @property {LayoutViewModel} layout Layout view model.
+     * @property {WidgetViewModel} widget Widget view model.
+     * @property {ProductViewModel} product Product view model.
+     * @property {WidgetViewModel} widgetDefinition Widget definition view model.
+     * @property {OrderViewModel} order Order view model.
+     * @property {ProductViewModel[]} productList List of product view models.
+     * @property {Object[]} categoryList List of categories.
+     * @property {CartViewModel} cart Cart view model.
+     * @property {PaymentAuthResponseViewModel} paymentauthorization Payment authorisation response view model.
+     * @property {SearchViewModel} search Search view model.
+     * @property {ShippingMethodsViewModel} shippingMethods Shipping methods view model.
+     * @property {SpaceViewModel} space Space view model.
+     * @property {UserViewModel} user User view model.
+     */
+    return {
+      //-------------------------------------------------------------
+      // Page Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.page
+         @private
+         @class Builder for the page type. Handles transforming data to and
+         from JSON.
+       */
+      page: {
+        scope: 'global',
+
+        /**
+           Whether or not pages are cachable.
+           @private
+           @memberof ViewModelBuilder.page
+           @name cachable
+           @type {boolean}
+           @default true
+         */
+        cachable: true,
+        /**
+           Whether or not a page can be loaded without transformation.
+           @private
+           @memberof ViewModelBuilder.page
+           @name load
+           @type {boolean}
+           @default true
+         */
+        load: true
+      },
+
+      //-------------------------------------------------------------
+      // Layout context object type
+      //-------------------------------------------------------------
+      /**
+       * @name ViewModelBuilder.layout
+       * @private
+       * @class Builder for the layout type. Handles transforming data to and
+       *        from JSON.
+       */
+      layout: {
+        /**
+         * Whether or not layouts are cacheable.
+         *
+         * @private
+         * @memberof ViewModelBuilder.layout
+         * @name cacheable
+         * @type {boolean}
+         * @default true
+         */
+        cachable: false,
+
+        /**
+         * Converts json to a {LayoutViewModel}.
+         *
+         * @private
+         * @memberof ViewModelBuilder.layout
+         * @function load
+         * @param {Object} data The JSON data to convert.
+         * @param {Object} [caller] The caller of this function.
+         * @param {Object} [params] Additional parameters for this
+         *        transformation.
+         */
+        load: function(data, caller, params) {
+          var layout;
+          // Create the layout and map it to the JSON
+          if(params &amp;&amp; params.model) {
+            layout = params.model;
+          } else {
+            layout = new caller.LayoutViewModel();
+          }
+          // this is done in layout view model already caller.setContextData(data.data);
+          ko.mapping.fromJS(data, caller.layoutMapping, layout);
+          layout.data = data.data;
+          return layout;
+        }
+      },
+
+      //-------------------------------------------------------------
+      // Widget definition object type
+      //-------------------------------------------------------------
+      /**
+       * @name ViewModelBuilder.widgetDefinition
+       * @private
+       * @class Builder for the widgetDefinition type. Handles transforming
+       *        widget data to and from JSON.
+       */
+      widgetDefinition: {
+        /**
+           Whether or not layouts are cacheable.
+           @private
+           @memberof ViewModelBuilder.widgetDefinition
+           @name cacheable
+           @type {boolean}
+           @default true
+         */
+        cachable: true,
+
+        /**
+         * Converts JSON to a {WidgetViewModel} representing a widget
+         * definition.
+         *
+         * @private
+         * @memberof ViewModelBuilder.widgetDefinition
+         * @function load
+         * @param {Object} data The JSON data to convert.
+         * @param {Object} [caller] The caller of this function.
+         * @param {Object} [params] Additional parameters for this
+         *        transformation.
+         * @param {boolean} [params.load=false] Whether or not the widget's
+         *        onLoad function should be run.
+         */
+        load: function(data, caller, params) {
+
+          var load = false;
+          var widget = new caller.WidgetViewModel(caller.basePath);
+
+          if(params &amp;&amp; params.load === true) {
+            load = true;
+          }
+
+          ko.mapping.fromJS(data, {}, widget);
+          caller.initializeWidget(widget, load);
+          return widget;
+        }
+      },
+
+      //-------------------------------------------------------------
+      // Widget instance object type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.widget
+         @private
+         @class Builder for the widget type. Handles transforming data to and
+         from JSON.
+       */
+      widget: {
+        /**
+           Whether or not layouts are cachable.
+           @private
+           @memberof ViewModelBuilder.widget
+           @name cachable
+           @type {boolean}
+           @default true
+         */
+        cachable: true,
+
+        /**
+           Converts json to a {WidgetViewModel} representing a widget instance.
+           @private
+           @memberof ViewModelBuilder.widget
+           @function load
+           @param {Object} data The json data to convert.
+           @param {Object} [caller] The caller of this function.
+           @param {Object} [params] Additional parameters for this transformation.
+           @param {boolean} [params.load=true] Whether or not the widget's onLoad function should be run.
+         */
+        load: function(data, caller, params) {
+
+          var load = true;
+          var widget = new caller.WidgetViewModel(caller.basePath);
+
+          if(params &amp;&amp; params.load === false) {
+            load = false;
+          }
+
+          ko.mapping.fromJS(data, {}, widget);
+          caller.initializeWidget(widget, load);
+          return widget;
+        }
+      },
+
+      category: {
+        cachable: true,
+        load: true
+      },
+
+      //-------------------------------------------------------------
+      // Product Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.product
+         @private
+         @class Builder for the product type. Handles transforming data to and
+         from JSON.
+       */
+      product: {
+        /**
+           Whether or not layouts are cachable.
+           @private
+           @memberof ViewModelBuilder.product
+           @name cachable
+           @type {boolean}
+           @default true
+         */
+        cachable: true,
+        /**
+           Whether or not a product can be loaded without transformation.
+           @private
+           @memberof ViewModelBuilder.product
+           @function load
+           @type {boolean}
+           @default true
+         */
+        load: function(data, caller, params) {
+            var load = true;
+            if (params &amp;&amp; params.load === false) {
+              load = false;
+            }
+            var product = new caller.ProductViewModel(data, params);
+            
+            return product;
+          }
+      },
+
+//      //-------------------------------------------------------------
+//      // User Object Type
+//      //-------------------------------------------------------------
+//      /**
+//         @name ViewModelBuilder.user
+//         @private
+//         @class Builder for the user type. Handles transforming data to and
+//         from JSON.
+//       */
+//      user: {
+//        scope: 'global',
+//
+//        /**
+//           Whether or not users are cachable.
+//           @private
+//           @memberof ViewModelBuilder.user
+//           @name cachable
+//           @type {boolean}
+//           @default true
+//         */
+//        cachable: false,
+//        /**
+//           Whether or not a user can be loaded without transformation.
+//           @private
+//           @memberof ViewModelBuilder.user
+//           @name load
+//           @type {boolean}
+//           @default true
+//         */
+//        load: true
+//      },
+
+      //-------------------------------------------------------------
+      // Store Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.store
+         @private
+         @class Builder for the store type. Handles transforming data to and
+         from JSON.
+       */
+      store: {
+        scope: 'global',
+
+        /**
+           Whether or not stores are cachable.
+           @private
+           @memberof ViewModelBuilder.store
+           @name cachable
+           @type {boolean}
+           @default true
+         */
+        cachable: true,
+        /**
+           Whether or not a store can be loaded without transformation.
+           @private
+           @memberof ViewModelBuilder.store
+           @name load
+           @type {boolean}
+           @default true
+         */
+        load: true
+      },
+
+      //-------------------------------------------------------------
+      // Links Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.links
+         @private
+         @class Builder for the links type. Handles transforming data to and
+         from JSON.
+       */
+      links: {
+        scope: 'global',
+
+        /**
+           Whether or not the links are cachable.
+           @private
+           @memberof ViewModelBuilder.links
+           @name cachable
+           @type {boolean}
+           @default false
+         */
+        cachable: false,
+        /**
+           Whether or not a store can be loaded without transformation.
+           @private
+           @memberof ViewModelBuilder.links
+           @name load
+           @type {boolean}
+           @default true
+         */
+        load: true
+      },
+
+      //-------------------------------------------------------------
+      // Payment Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.links
+         @private
+         @class Builder for the paymeny type. Handles transforming data to and
+         from JSON.
+       */
+      payment: {
+        scope: 'page',
+
+        /**
+           Whether or not the payment info is cachable.
+           @private
+           @memberof ViewModelBuilder.links
+           @name cachable
+           @type {boolean}
+           @default false
+         */
+        cachable: false,
+        create: true,
+        /**
+           Whether or not a store can be loaded without transformation.
+           @private
+           @memberof ViewModelBuilder.links
+           @name load
+           @type {boolean}
+           @default true
+         */
+        load: function(data, caller, params) {
+          return caller.PaymentDetails.getInstance(caller.adapter, data);
+        }
+      },
+
+      //-------------------------------------------------------------
+      // Cart Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.cart
+         @private
+         @class Builder for the cart type. Handles transforming data to and
+         from JSON.
+       */
+      cart: {
+        scope: 'global',
+
+        /**
+           Whether or not the cart is cachable.
+           @private
+           @memberof ViewModelBuilder.cart
+           @name cachable
+           @type {boolean}
+           @default false
+         */
+        cachable: false,
+        /**
+           This method creates the cart view model. It passes all data received
+           from the page responder to the shopping cart to populate it. If no
+           data exists then this data is read from the cookie and the cart is
+           populated from there.
+           @private
+           @memberof ViewModelBuilder.cart
+           @function load
+           @param {Object} data The json data to convert.
+           @param {Object} [caller] The caller of this function.
+           @param {Object} [params] Additional parameters for transformation.
+         */
+        load: function(data, caller, params) {
+          return caller.CartViewModel.getInstance(caller.adapter, data, params, caller.contextHandler.get("user","global"));
+        }
+      },
+
+      //-------------------------------------------------------------
+      // Order Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.order
+         @private
+         @class Builder for the order type. Handles transforming data to and
+         from JSON.
+       */
+      order: {
+        scope: 'page',
+
+        /**
+           Whether or not the oder is cachable.
+           @private
+           @memberof ViewModelBuilder.order
+           @name cachable
+           @type {boolean}
+           @default false
+         */
+        cachable: false,
+        /**
+           This method creates the order view model. It passes all data received
+           from the page responder to the order to populate it.
+           @private
+           @memberof ViewModelBuilder.order
+           @function load
+           @param {Object} data The json data to convert.
+           @param {Object} [caller] The caller of this function.
+           @param {Object} [params] Additional parameters for transformation.
+         */
+        load: function(data, caller, params) {
+          return caller.OrderViewModel.getInstance(caller.adapter, caller.contextHandler.get("cart","global"), data, params, caller.contextHandler.get("user","global"));
+        }
+      },
+
+      //-------------------------------------------------------------
+      // Confirmation Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.confirmation
+         @private
+         @class Builder for the confirmation type. Handles transforming data to
+         and from JSON.
+       */
+      confirmation: {
+        /**
+           Whether or not layouts are cachable.
+           @private
+           @memberof ViewModelBuilder.confirmation
+           @name cachable
+           @type {boolean}
+           @default true
+         */
+        cachable: true,
+        /**
+           Whether or not a confirmation can be loaded without transformation.
+           @private
+           @memberof ViewModelBuilder.confirmation
+           @name load
+           @type {boolean}
+           @default true
+         */
+        load: true
+      },
+
+      //-------------------------------------------------------------
+      // Product List Object Type
+      //-------------------------------------------------------------
+
+      productList: {
+        /**
+           Whether or not layouts are cachable.
+           @type {boolean}
+           @memberof ViewModelBuilder.productList
+           @name cachable
+           @default false
+         */
+        cachable: true,
+
+        /**
+           Converts json to an Array of products representing a product list.
+           @private
+           @memberof ViewModelBuilder.productList
+           @function load
+           @param {Object} data The json data to convert.
+           @param {Object} [caller] The caller of this function.
+           @param {Object} [params] Additional parameters for this transformation.
+         */
+        load: function(data, caller, params) {
+          return data.products;
+        }
+      },
+
+      //-------------------------------------------------------------
+      // Category List Object Type
+      //-------------------------------------------------------------
+      /**
+       * @name ViewModelBuilder.categoryList
+       * @private
+       * @class Builder for the categoryList type. Handles transforming category
+       *        data to and from JSON.
+       */
+      categoryList: {
+        /**
+         * Whether or not layouts are cacheable.
+         *
+         * @private
+         * @memberof ViewModelBuilder.categoryList
+         * @name cacheable
+         * @type {boolean}
+         * @default true
+         */
+        cachable: false,
+
+        /**
+         * Converts JSON to an Array of categories representing a list of
+         * categories.
+         *
+         * @private
+         * @memberof ViewModelBuilder.categoryList
+         * @function load
+         * @param {Object} data The JSON data to convert.
+         * @param {Object} [caller] The caller of this function.
+         * @param {Object} [params] Additional parameters for this
+         *        transformation.
+         */
+        load: function(data, caller, params) {
+          return data;
+        }
+      },
+
+      //-------------------------------------------------------------
+      // Search Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.search
+         @private
+         @class Builder for the search type. Handles transforming data to and from JSON.
+       */
+      search: {
+        scope: 'global',
+
+        /**
+           Whether or not the search is cachable.
+           @private
+           @memberof ViewModelBuilder.search
+           @name cachable
+           @type {boolean}
+           @default false
+         */
+        cachable: false,
+        /**
+           This method creates the search view model.
+           @private
+           @memberof ViewModelBuilder.search
+           @function load
+           @param {Object} data The json data to convert.
+           @param {Object} [caller] The caller of this function.
+           @param {Object} [params] Additional parameters for transformation.
+         */
+        load: function(data, caller, params) {
+            return caller.SearchViewModel.getInstance(caller.adapter, data, params);
+        }
+      },
+
+      //-------------------------------------------------------------
+      // Site Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.site
+         @private
+         @class Builder for the site type.
+       */
+      site: {
+        scope: 'global',
+
+        /**
+           Whether or not the site is cachable.
+           @private
+           @memberof ViewModelBuilder.site
+           @name cachable
+           @type {boolean}
+           @default false
+         */
+        cachable: false,
+
+        /**
+           This method creates the site view model.
+           @private
+           @memberof ViewModelBuilder.site
+           @function load
+           @param {Object} data The json data to convert.
+           @param {Object} [caller] The caller of this function.
+           @param {Object} [params] Additional parameters for transformation.
+         */
+        load: function(data, caller, params) {
+          return caller.SiteViewModel.getInstance(caller.adapter, data, params);
+        }
+      },
+
+      //-------------------------------------------------------------
+      // Shipping Method Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.shippingMethods
+         @private
+         @class Builder for the shipping method. Handles transforming data to and from JSON.
+       */
+      shippingmethods: {
+
+        scope: 'page',
+        /**
+           Whether or not the shippingMethods is cachable.
+           @private
+           @memberof ViewModelBuilder.shippingMethods
+           @name cachable
+           @type {boolean}
+           @default false
+         */
+        cachable: false,
+        /**
+           This method creates the shipping Methods view model.
+           @private
+           @memberof ViewModelBuilder.shippingMethods
+           @function load
+           @param {Object} data The json data to convert.
+           @param {Object} [caller] The caller of this function.
+           @param {Object} [params] Additional parameters for transformation.
+         */
+        load: function(data, caller, params) {
+          return caller.ShippingMethodsViewModel.getInstance(caller.adapter, data);
+        }
+      },
+
+      //-------------------------------------------------------------
+      // payment authorization Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.paymentauthorization
+         @private
+         @class Builder for the payment authorization. Handles transforming data to and from JSON.
+       */
+      paymentauthorization: {
+
+        scope: 'page',
+        /**
+           Whether or not the payment authorization is cachable.
+           @private
+           @memberof ViewModelBuilder.paymentauthorization
+           @name cachable
+           @type {boolean}
+           @default false
+         */
+        cachable: false,
+        /**
+           This method creates the payment authorization view model.
+           @private
+           @memberof ViewModelBuilder.paymentauthorization
+           @function load
+           @param {Object} data The json data to convert.
+           @param {Object} [caller] The caller of this function.
+           @param {Object} [params] Additional parameters for transformation.
+         */
+        load: function(data, caller, params) {
+
+          var load = true;
+          var paymentAuthResponseViewModel = new caller.PaymentAuthResponseViewModel(caller.adapter, data);
+
+          return paymentAuthResponseViewModel;
+        }
+      },
+      //-------------------------------------------------------------
+      // Space Object Type
+      //-------------------------------------------------------------
+      /**
+         @name space
+         @private
+         @class Builder for the SpaceViewModel
+       */
+      space: {
+
+        scope: 'global',
+        /**
+           Whether or not the SpaceViewModel is cachable.
+           @private
+           @memberof ViewModelBuilder.space
+           @name cachable
+           @type {boolean}
+           @default false
+         */
+        cachable: false,
+        /**
+           This method creates the SpaceViewModel.
+           @private
+           @memberof ViewModelBuilder.paymentauthorization
+           @function load
+           @param {Object} data The json data to convert.
+           @param {Object} [caller] The caller of this function.
+           @param {Object} [params] Additional parameters for transformation.
+         */
+        load: function(data, caller, params) {
+          return caller.SpaceViewModel.getInstance(caller.adapter, data, params);
+        }
+      },
+      //-------------------------------------------------------------
+      // User Registration and Login Object Type
+      //-------------------------------------------------------------
+      /**
+         @name ViewModelBuilder.user
+         @private
+         @class Builder for the user registration and login. Handles the registration and login from the front end.
+       */
+      user: {
+        
+        scope: 'global',
+        /**
+           Whether or not the user is cachable.
+           @private
+           @memberof ViewModelBuilder.user
+           @name cachable
+           @type {boolean}
+           @default false
+        */
+        cachable: false,
+        /**
+           This method creates the user view model.
+           @private
+           @memberof ViewModelBuilder.user
+           @function load
+           @param {Object} data The json data to convert.
+           @param {Object} [caller] The caller of this function.
+        */
+        load: function(data, caller, params) {
+          return caller.UserViewModel.getInstance(caller.adapter, data, params);
+        }
+      }
+
+    };
+  }
+);
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Index</a></h2><h3>Modules</h3><ul><li><a href="module-ccKoErrorWrapper.html">ccKoErrorWrapper</a></li><li><a href="module-ccKoExtensions.html">ccKoExtensions</a></li></ul><h3>Classes</h3><ul><li><a href="Address.html">Address</a></li><li><a href="CartViewModel.html">CartViewModel</a></li><li><a href="DynamicProperty.html">DynamicProperty</a></li><li><a href="EventDispatcher.html">EventDispatcher</a></li><li><a href="GiftCardViewModel.html">GiftCardViewModel</a></li><li><a href="GiftProductListingViewModel.html">GiftProductListingViewModel</a></li><li><a href="ko.bindingHandlers.background.html">background</a></li><li><a href="ko.bindingHandlers.carouselSwipe.html">carouselSwipe</a></li><li><a href="ko.bindingHandlers.ccForm.html">ccForm</a></li><li><a href="ko.bindingHandlers.ccLink.html">ccLink</a></li><li><a href="ko.bindingHandlers.ccValidation.html">ccValidation</a></li><li><a href="ko.bindingHandlers.checkbox.html">checkbox</a></li><li><a href="ko.bindingHandlers.chosen.html">chosen</a></li><li><a href="ko.bindingHandlers.contextResourcesNamespace.html">contextResourcesNamespace</a></li><li><a href="ko.bindingHandlers.currency.html">currency</a></li><li><a href="ko.bindingHandlers.datepicker.html">datepicker</a></li><li><a href="ko.bindingHandlers.datepopover.html">datepopover</a></li><li><a href="ko.bindingHandlers.draggable.html">draggable</a></li><li><a href="ko.bindingHandlers.droppable.html">droppable</a></li><li><a href="ko.bindingHandlers.fade.html">fade</a></li><li><a href="ko.bindingHandlers.hover.html">hover</a></li><li><a href="ko.bindingHandlers.imageSource.html">imageSource</a></li><li><a href="ko.bindingHandlers.imageZoom.html">imageZoom</a></li><li><a href="ko.bindingHandlers.localeText.html">localeText</a></li><li><a href="ko.bindingHandlers.makeAccess.html">makeAccess</a></li><li><a href="ko.bindingHandlers.modal.html">modal</a></li><li><a href="ko.bindingHandlers.modalTabbingContraint.html">modalTabbingContraint</a></li><li><a href="ko.bindingHandlers.onRender.html">onRender</a></li><li><a href="ko.bindingHandlers.popeditor.html">popeditor</a></li><li><a href="ko.bindingHandlers.popover.html">popover</a></li><li><a href="ko.bindingHandlers.productImageSource.html">productImageSource</a></li><li><a href="ko.bindingHandlers.propertyEditor.html">propertyEditor</a></li><li><a href="ko.bindingHandlers.radio.html">radio</a></li><li><a href="ko.bindingHandlers.richTextEditor.html">richTextEditor</a></li><li><a href="ko.bindingHandlers.scrollAffix.html">scrollAffix</a></li><li><a href="ko.bindingHandlers.select2.html">select2</a></li><li><a href="ko.bindingHandlers.select2Tags.html">select2Tags</a></li><li><a href="ko.bindingHandlers.selectable.html">selectable</a></li><li><a href="ko.bindingHandlers.slickList.html">slickList</a></li><li><a href="ko.bindingHandlers.slide.html">slide</a></li><li><a href="ko.bindingHandlers.slider.html">slider</a></li><li><a href="ko.bindingHandlers.spectrum.html">spectrum</a></li><li><a href="ko.bindingHandlers.tagsInput.html">tagsInput</a></li><li><a href="ko.bindingHandlers.textCheck.html">textCheck</a></li><li><a href="ko.bindingHandlers.timepicker.html">timepicker</a></li><li><a href="ko.bindingHandlers.triggerMessage.html">triggerMessage</a></li><li><a href="ko.bindingHandlers.validatableTarget.html">validatableTarget</a></li><li><a href="ko.bindingHandlers.validatableValue.html">validatableValue</a></li><li><a href="ko.bindingHandlers.widgetLocaleText.html">widgetLocaleText</a></li><li><a href="koValidation.alphaNumeric.html">alphaNumeric</a></li><li><a href="koValidation.alphaNumericNoSpaces.html">alphaNumericNoSpaces</a></li><li><a href="koValidation.alphaNumericNoSpacesWithSeperators.html">alphaNumericNoSpacesWithSeperators</a></li><li><a href="koValidation.alphaNumericWithSeperators.html">alphaNumericWithSeperators</a></li><li><a href="koValidation.bool.html">bool</a></li><li><a href="koValidation.creditcard.html">creditcard</a></li><li><a href="koValidation.cvv.html">cvv</a></li><li><a href="koValidation.endmonth.html">endmonth</a></li><li><a href="koValidation.endyear.html">endyear</a></li><li><a href="koValidation.importFileName.html">importFileName</a></li><li><a href="koValidation.laterDate.html">laterDate</a></li><li><a href="koValidation.match.html">match</a></li><li><a href="koValidation.mediaZipFileName.html">mediaZipFileName</a></li><li><a href="koValidation.number.html">number</a></li><li><a href="koValidation.observablePattern.html">observablePattern</a></li><li><a href="koValidation.password.html">password</a></li><li><a href="koValidation.price.html">price</a></li><li><a href="koValidation.propertyIdAlreadyInUse.html">propertyIdAlreadyInUse</a></li><li><a href="koValidation.propertyNameAlreadyInUse.html">propertyNameAlreadyInUse</a></li><li><a href="koValidation.restrictSlashCharacters.html">restrictSlashCharacters</a></li><li><a href="koValidation.startmonth.html">startmonth</a></li><li><a href="koValidation.startyear.html">startyear</a></li><li><a href="koValidation.uniqueTrimmed.html">uniqueTrimmed</a></li><li><a href="koValidation.uniqueTrimmedCaseInsensitive.html">uniqueTrimmedCaseInsensitive</a></li><li><a href="koValidation.url.html">url</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.addTemplate.html">addTemplate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDate.html">ccDate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDateTime.html">ccDateTime</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccNumber.html">ccNumber</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.disabled.html">disabled</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.element.html">element</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.embeddedAssistance.html">embeddedAssistance</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.inTabFlow.html">inTabFlow</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.setContextVariable.html">setContextVariable</a></li><li><a href="NavStateViewModel.html">NavStateViewModel</a></li><li><a href="OrderHistoryViewModel.html">OrderHistoryViewModel</a></li><li><a href="OrderViewModel.html">OrderViewModel</a></li><li><a href="ParentOrganisation.html">ParentOrganisation</a></li><li><a href="ProductListingSearchViewModel.html">ProductListingSearchViewModel</a></li><li><a href="ProductListingViewModel.html">ProductListingViewModel</a></li><li><a href="ProductViewModel.html">ProductViewModel</a></li><li><a href="PubSub.topicNames.html">topicNames</a></li><li><a href="resetCVV.html">resetCVV</a></li><li><a href="resetPaymentDetails.html">resetPaymentDetails</a></li><li><a href="SearchRestClient.html">SearchRestClient</a></li><li><a href="UserViewModel.html">UserViewModel</a></li><li><a href="WidgetViewModel.html">WidgetViewModel</a></li><li><a href="WishlistContentViewModel.html">WishlistContentViewModel</a></li></ul><h3>Namespaces</h3><ul><li><a href="ko.bindingHandlers.html">bindingHandlers</a></li><li><a href="ko.extenders.html">extenders</a></li><li><a href="koValidation.html">koValidation</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CCEETagProcessor">CCEETagProcessor</a></li><li><a href="global.html#isValidDeterminewhetherornotthepaymentdetailsobjectisvalidbasedonthevalidityofitscomponentparts.Thiswillnotcauseerrormessagestobedisplayedforanyobservablevaluesthatareunchangedandhaveneverreceivedfocusontherelatedformfield(s).">isValid
+Determine whether or not the payment details object is valid
+based on the validity of its component parts. This will not
+cause error messages to be displayed for any observable values
+that are unchanged and have never received focus on the 
+related form field(s).</a></li><li><a href="global.html#validatePaymentDetailsForceallrelevantmemberobservablestoperformtheirvalidationnow&displaytheerrors(ifany)">validatePaymentDetails
+Force all relevant member observables to perform their
+validation now & display the errors (if any)</a></li></ul>
+</nav>
+
+<br clear="both">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0</a> on Mon Oct 10 2016 10:49:04 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

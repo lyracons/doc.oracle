@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Dynamo/Client/Store/web/store.war/shared/js/pageLayout/rest-adapter.js</title>
+    
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    
+    <h1 class="page-title">Source: Dynamo/Client/Store/web/store.war/shared/js/pageLayout/rest-adapter.js</h1>
+    
+    
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source"><code>/**
+ * @fileoverview Defines a REST adapter capable of making REST calls to load
+ * external data.
+ *
+ */
+/*global $ */
+define(
+  //-------------------------------------------------------------------
+  // PACKAGE NAME
+  //-------------------------------------------------------------------
+  'pageLayout/rest-adapter',
+
+  //-------------------------------------------------------------------
+  // DEPENDENCIES
+  //-------------------------------------------------------------------
+  ['jquery', 'knockout', 'ccRestClient', 'ccConstants', 'pageLayout/simple-cache', 'navigation', 'ccNavState'],
+
+  //-------------------------------------------------------------------
+  // MODULE DEFINITION
+  //-------------------------------------------------------------------
+  function ($, ko, ccRestClient, CCConstants, Cache, navigation, navstate) {
+
+    "use strict";
+
+    var restClient = ccRestClient;
+    var DEFAULT_CACHE_LOADER = '__default__';
+    
+
+    //-----------------------------------------------------------------
+    // Class definition &amp; member variables
+    //-----------------------------------------------------------------
+    /**
+     * Creates a REST adapter.
+     * @private
+     * @name RestAdapter
+     * @param {String} basePath !!DEBUG!!
+     * @class The RestAdapter is responsible for managing the system's interaction with
+     * the external source of data. It handles loading and modification of items by using
+     * type &amp; id parameters to indicate what type of data is being dealt with. Based on the provided
+     * type different REST calls will be invoked to handle the operation.
+     */
+    function RestAdapter(basePath) {
+      this.basePath = basePath;
+      this.cache = new Cache();
+      this.cacheLoaders = {
+      };
+      this.registerCacheLoader(DEFAULT_CACHE_LOADER, this.defaultCacheLoader);
+      return (this);
+    }
+
+    /**
+     * Object literal representing a map of rest calls to the data type they return. This should probably be defined on the server.
+     * @private
+     */
+    RestAdapter.prototype.restToDataTypes = {
+      'widget': 'widget',
+      'widgetDefinition': 'widgetDefinition',
+      'layout': 'layout',
+      'cart': 'product',
+      'productList': 'product',
+      'categoryList': 'category'
+    };
+
+    /**
+     * Populates the cache for the given response data of the given dataType having ids
+     * specified by the ids array.
+     * This cache loader simply puts the items into the cache using the ids array as
+     * the cache key for each entry. Cache values are assumed to be in the data array.
+     * It's also assumed that ids[x] is the cache key for the value located at data[x].
+     */
+    RestAdapter.prototype.defaultCacheLoader = function (cache, dataType, data, ids) {
+      for (var i = 0; i &lt; ids.length; i++) {
+        if (data[i] &amp;&amp; data[i].id &amp;&amp; (ids[i] === data[i].id)) {
+          /* test if the data's id property matches the id we are inserting into cache */
+          cache.set(dataType, ids[i], data[i]);
+        }
+      }
+    };
+
+    /**
+     * Cache loaders are responsible for populating the cache with data from a server
+     * response. There is always a default cache loader, but cache loaders may
+     * also be specified per rest service by registering them here.
+     */
+    RestAdapter.prototype.registerCacheLoader = function (restType, cacheLoader) {
+      this.cacheLoaders[restType] = cacheLoader;
+    };
+
+    RestAdapter.prototype.getCacheLoader = function (restType) {
+      return this.cacheLoaders[restType];
+    };
+    
+    /**
+     * Loads the item of the type given by dataType having ids specified in ids
+     * from cache and returns them as an array
+     * @private
+     */
+    RestAdapter.prototype.reassembleDataFromCache = function (dataType, ids) {
+      var self = this;
+      var reassembledData = [];
+      for (var j = 0; j &lt; ids.length; j++) {
+        reassembledData.push(self.cache.get(dataType, ids[j]).result);
+      }
+      return reassembledData;
+    };
+
+    /**
+     * Loads data from a remote service in the case when the ids of items being returned 
+     * are not known. For example, requesting the child categories of a root category, or
+     * products located under a collection.
+     * Results are cached based off of ids in the returned data.
+     */
+    RestAdapter.prototype.cachedRootCategories = function (success, error) {
+      /* check the cache, have we done this query before? */
+      /* f this, bad idea */
+      // child categories
+      // root categories
+      // child products
+      // child skus
+      // get product
+      // get products
+      // 
+    };
+
+    /**
+     Loads data externally based on type and parameters. Results are stored into cache.
+     Subsequent requests for items of the same type and id will return from cache rather
+     than making a remote call to the server.
+     @function RestAdapter#cachedLoadJSON
+     @param {String} restType The type of rest call to be used for requesting data
+     @param {String|Array} id The id of the item being loaded. Either a simple id (String) or
+     a complex id (Array).
+     @param {Object} [params] Additional parameters for loading the item.
+     @param {function} success Succes callback function if the item was successfully loaded. The callback has
+     the resulting data as its only parameter.
+     @param {function} [error] Error callback function if there was an error in loading the item.
+     */
+    RestAdapter.prototype.cachedLoadJSON = function (restType, id, params, success, error) {
+      /**
+       Lookup the cache type of what is being requested
+       check if we have any of the items of the given id in cache
+       */
+
+       /* Declared for the "localSuccess" callback  */
+      var cacheResult, finalId;
+      var self = this;
+      var dataType = this.restToDataTypes[restType];
+      /**
+         Success callback which handles cache population
+         and reassembly of results from cache.
+         @ignore
+       */
+      var localSuccess = function (data) {
+        var reassembledData, cacheLoader;
+        /** get the cache loader for this service **/
+        cacheLoader = self.getCacheLoader(restType);
+        if (!cacheLoader) {
+          cacheLoader = self.getCacheLoader(DEFAULT_CACHE_LOADER);
+        }
+        /* Can't cache without a dataType */
+        if (dataType) {
+          /** populate cache **/
+          if (!(finalId instanceof Array)) {
+            cacheLoader(self.cache, dataType, data, [finalId]);
+            reassembledData = data;
+          } else if (finalId instanceof Array) {
+            cacheLoader(self.cache, dataType, data, finalId);
+            reassembledData = self.reassembleDataFromCache(dataType, id);
+          }
+        }
+        success(reassembledData);
+      };
+      if (id instanceof Array) {
+        finalId = [];
+        for (var i = 0; i &lt; id.length; i++) {
+          cacheResult = self.cache.get(dataType, id[i]);
+          if (!cacheResult.hit) {
+            /* Add to the list of items we need to request */
+            finalId.push(id[i]);
+          }
+        }
+        if (finalId.length > 0) {
+          /* if we need more data, go get it */
+          this.loadJSON(restType, finalId, params, localSuccess, error);
+        } else {
+          /* otherwise we have it all from cache so just return it */
+          return self.reassembleDataFromCache(dataType, id);
+        }
+      } else {
+        finalId = id;
+        cacheResult = self.cache.get(dataType, id);
+        if (cacheResult.hit) {
+          success(cacheResult.result);
+        } else {
+          this.loadJSON(restType, finalId, params, localSuccess, error);
+        }
+      }
+      
+    };
+
+    /**
+       Loads the requested item from the external datasource based on type, id and parameters.
+       @private
+       @function RestAdapter#loadJSON
+       @param {String} type The type of item being loaded.
+       @param {String|Array} id The id of the item being loaded. Either a simple id (String) or
+       a complex id (Array).
+       @param {Object} [params] Additional parameters for loading the item.
+       @param {function} success Succes callback function if the item was successfully loaded. The callback has
+       the resulting data as its only parameter.
+       @param {function} [error] Error callback function if there was an error in loading the item.
+     */
+    RestAdapter.prototype.loadJSON = function (type, id, params, success, error) {
+      var url, dataId, input, restVersion, dataType;
+      if ($.isFunction(params)) {
+        error = success;
+        success = params;
+        params = null;
+      }
+
+      
+
+      //-----------------------------------------------------------------
+      // DEBUG CODE FOR GETTING WIDGETS FROM FILE SOURCES
+      // ONCE WIDGETS ARE AVAILABLE FROM REPOSITORY THIS SHOULD BE
+      // REPLACED AND REMOVED
+      //-----------------------------------------------------------------
+      switch (type) {
+        //-------------------------------------------------------------
+        //Widget Loading
+        //-------------------------------------------------------------
+        case 'widget':
+          url = '../shared/widget/' + id + '/non-dist/data/widget.json';
+          break;
+        //-------------------------------------------------------------
+        //Widget Definition Loading
+        //-------------------------------------------------------------
+        case 'widgetDefinition':
+          url = '../shared/widget/' + id + '/non-dist/data/widget.json';
+          break;
+      }
+
+      if (url) {
+        $.ajax({
+          url: url,
+          dataType: 'json',
+          type: 'GET',
+          success: success,
+          error: error
+        });
+        return;
+      }
+
+      //--------------------------
+      //ACTUAL REST ADAPTER STUFF
+      //--------------------------
+
+      input = {};
+      var pathParam = null;
+      var autoWrap = false;
+
+      switch (type) {
+        //-------------------------------------------------------------
+        //Layout Loading
+        //-------------------------------------------------------------
+        case 'layout':
+          url = CCConstants.ENDPOINT_PAGES_GET_PAGE;
+          pathParam = id;
+          input = params;
+          break;
+
+        //-------------------------------------------------------------
+        //Cart Loading
+        //-------------------------------------------------------------
+        case 'cart':
+          if (!id || typeof id !== 'object' || id.length &lt; 1) {
+            throw "Error with getting cart";
+          }
+          input[CCConstants.CATALOG] = id[0];
+          input[CCConstants.PRODUCT_IDS] = id[1];
+          if (id[2]) {
+            input[CCConstants.INCLUDE_HISTORICAL] = id[2];
+          }
+          if (id[3]) {
+            input[CCConstants.STORE_PRICELISTGROUP_ID] = id[3];
+          }
+          if(id[4]){
+        	input[CCConstants.FIELDS_QUERY_PARAM] = id[4];
+          }
+          url = CCConstants.ENDPOINT_PRODUCTS_LIST_PRODUCTS;
+          break;
+
+        case 'getCurrentProfileOrder':
+          url = CCConstants.ENDPOINT_GET_PROFILE_ORDER;
+          dataType = 'price';
+          break;
+         
+        //-------------------------------------------------------------
+        //Cart validation for the stock levels
+        //-------------------------------------------------------------
+        case 'getStockStatus':
+          pathParam = id[1];
+          input[CCConstants.SKU_ID] = id[0];
+          input[CCConstants.CATALOG] = id[2];
+          url = CCConstants.ENDPOINT_GET_PRODUCT_AVAILABILITY;
+          break;
+          
+        case CCConstants.ENDPOINT_GET_INITIAL_ORDER:
+          pathParam = id;
+          input = params;
+          url = CCConstants.ENDPOINT_GET_INITIAL_ORDER;
+          break;
+       
+        case 'getStockStatuses':
+          input[CCConstants.PRODUCTS_PARAM] = params.products;
+          input[CCConstants.CATALOG] = params.catalogId;
+          url = CCConstants.ENDPOINT_PRODUCTS_AVAILABILITY;
+          break;
+          
+        //-------------------------------------------------------------
+        //Product Prices
+        //-------------------------------------------------------------
+        case CCConstants.ENDPOINT_GET_PRODUCT_PRICES:
+          pathParam = id;
+          if (params) {
+            input[CCConstants.SKU_ID] = params;
+          }
+          url = CCConstants.ENDPOINT_GET_PRODUCT_PRICES;
+          break;
+           
+        case 'orderPricing':
+          input = params;
+          url = CCConstants.ENDPOINT_ORDERS_PRICE_ORDER;
+          input[CCConstants.CHECKOUT] = true;
+          dataType = 'price';
+          break;
+
+        //-------------------------------------------------------------
+        //Product Loading
+        //-------------------------------------------------------------
+        case 'product':
+          if (!id || typeof id !== 'object' || id.length &lt;= 1) {
+            throw "Error with getting product";
+          }
+          input[CCConstants.CATALOG] = id[1];
+          url = CCConstants.ENDPOINT_PRODUCTS_GET_PRODUCT;
+          pathParam = id[0];
+          dataType = 'product';
+          break;
+
+        //-------------------------------------------------------------
+        //Product List Loading
+        //---------------------------------------- ---------------------
+        case 'productList':
+          url = CCConstants.ENDPOINT_PRODUCTS_LIST_PRODUCTS;
+          input[CCConstants.CATEGORY] = id;
+          input[CCConstants.INCL_CHILDREN] = true;
+          break;
+
+        //-------------------------------------------------------------
+        //Category List Loading
+        //-------------------------------------------------------------
+        case 'categoryList':
+          if (!id || typeof id !== 'object' || id.length &lt;= 1) {
+            throw "Error with getting category list";
+          }
+          input[CCConstants.CATALOG] = id[1];
+          input[CCConstants.CATALOG_MAXLEVEL_PARAM] = id[2];
+          input[CCConstants.EXPAND_QUERY_PARAM] = "childCategories";
+          if (id[3]) {
+              input[CCConstants.FIELDS_QUERY_PARAM] = id[3];        	  
+          }
+          else {
+              input[CCConstants.FIELDS_QUERY_PARAM] = "childCategories(items)";        	  
+          }
+          autoWrap = true;
+          // /ccrest/category
+          url = CCConstants.ENDPOINT_COLLECTIONS_GET_COLLECTION;
+          pathParam = id[0];
+          break;
+
+        case 'search':
+          input = params;
+          url = CCConstants.ENDPOINT_SEARCH_SEARCH;
+          break;
+        
+        case 'assembler':
+          input = params;
+          url = CCConstants.ENDPOINT_ASSEMBLE;
+          pathParam = 'assemble';
+          break;
+          
+        case 'paymentauthresponse':
+          pathParam = id;
+          input = params; 
+          url = CCConstants.ENDPOINT_PAYMENT_GET_PAYMENT_AUTH_RESPONSE;
+          break;
+        
+        case 'paymentGroup':
+          pathParam = id;
+          url = CCConstants.ENDPOINT_GET_PAYMENT_GROUP;
+          break;
+          
+        //--------------------------------------------------------------
+        // Profile end points
+        //--------------------------------------------------------------
+        case 'getUser':
+          url = CCConstants.ENDPOINT_GET_CURRENT_USER;
+          break;
+        
+        case 'updateProfile':
+          pathParam = null;
+          input = params;
+          url = CCConstants.ENDPOINT_UPDATE_PROFILE;
+          break;
+        case 'changePassword':
+          pathParam = null;
+          input = params;
+          url = CCConstants.ENDPOINT_UPDATE_PROFILE;
+          break;
+       
+        //--------------------------------------------------------------
+        // Order History end points
+        //--------------------------------------------------------------
+        case 'getAllOrdersForProfile':
+          input = params;
+          url = CCConstants.ENDPOINT_GET_ALL_ORDERS_FOR_PROFILE;
+          break;
+        case 'getAllOrdersCountForProfile':
+          input = params;
+          if (input === null) {
+            input = {};
+          }
+          input[CCConstants.COUNT_ONLY] = true;
+          url = CCConstants.ENDPOINT_GET_ALL_ORDERS_FOR_PROFILE;
+          break;
+          
+        //--------------------------------------------------------------
+        // Dynamic properties meta-data
+        //--------------------------------------------------------------
+        
+        case 'dynamicProperties':
+          pathParam = id;
+          url = CCConstants.ENDPOINT_METADATA_GET_METADATA;
+          input = params;
+          if (input === null) {
+            input = {};
+          }
+          input[CCConstants.DYNAMIC_ONLY] = true;
+          break;
+          
+        case 'getGiftWithPurchaseChoices':
+          url = CCConstants.ENDPOINT_GET_GIFT_CHOICES;
+          input[CCConstants.GIFT_WITH_PURCHASE_DETAIL] = id[0];
+          input[CCConstants.GIFT_WITH_PURCHASE_TYPE] = id[1];
+          break;
+      }
+
+      if (!url) {
+        throw "No REST target found for item type: " + type;
+      }
+
+      restClient.request(url, input,
+        function (result) {
+          if (success) {
+            var resultData = result;
+            if (autoWrap) {
+              resultData = resultData.items;
+            }
+            success(resultData, dataType);
+          }
+        },
+        function (result) {
+          if (result.status == CCConstants.HTTP_NOT_FOUND) {
+            // Passing in true for noHistory param (2nd param), we don't want the url to change on 404 pages.
+            navigation.goTo("/404", true, true);
+          }  
+          else if (error &amp;&amp; result) {
+            error(result);
+          }
+        },
+        pathParam);
+    };
+
+    /**
+       Persists the creation of an item by making an external request to create the item.
+       @private
+       @param {String} type The type of item being created.
+       @param {String|Array} id The id of the item being created. Either a simple id (String) or
+       a complex id (Array).
+       @param {Object} json Json object representing the created item.
+       @param {Object} [params] Additional parameters for the creation.
+       @param {function} success Succes callback function if the item was successfully created.
+       @param {function} [error] Error callback function if there was an error in creating the item.
+     */
+    RestAdapter.prototype.persistCreate = function (type, id, json, params, success, error) {
+      var url, input = {};
+
+      if ($.isFunction(params)) {
+        error = success;
+        success = params;
+        params = null;
+      }
+
+      switch (type) {
+        //-------------------------------------------------------------
+        //Cart Pricing
+        //-------------------------------------------------------------
+        case CCConstants.ENDPOINT_ORDERS_PRICE_ORDER:
+          input = json;
+          url = CCConstants.ENDPOINT_ORDERS_PRICE_ORDER;
+          break;
+
+        //-------------------------------------------------------------
+        //Create Profile
+        //-------------------------------------------------------------
+        case CCConstants.ENDPOINT_CREATE_PROFILE:
+          input = json;
+          url = CCConstants.ENDPOINT_CREATE_PROFILE;
+          break;
+
+        //-------------------------------------------------------------
+        //Forgotten Password
+        //------------------------------------------------------------- 
+        case CCConstants.ENDPOINT_FORGOT_PASSWORD:
+          input = json;
+          url = CCConstants.ENDPOINT_FORGOT_PASSWORD;
+          break;
+
+        //-------------------------------------------------------------
+        //Reset Expired Password
+        //------------------------------------------------------------- 
+        case CCConstants.ENDPOINT_UPDATE_EXPIRED_PASSWORD:
+         input = json;
+         url = CCConstants.ENDPOINT_UPDATE_EXPIRED_PASSWORD;
+         break;
+
+        //-------------------------------------------------------------
+        // Shipping method list Loading
+        //-------------------------------------------------------------
+        case CCConstants.ENDPOINT_SHIPPING_METHODS_LIST_SHIPPING_METHODS:
+          input = json; 
+          url = CCConstants.ENDPOINT_SHIPPING_METHODS_LIST_SHIPPING_METHODS;
+          break;
+
+        case 'product':
+          //Not implemented
+        break;
+
+        case 'order':
+          input = json;
+          if (params != null &amp;&amp; params.incomplete) {
+            url = CCConstants.ENDPOINT_UPDATE_PROFILE_ORDER;
+            input[CCConstants.OP] = CCConstants.CREATE_OP;
+          } else {
+            url = CCConstants.ENDPOINT_ORDERS_CREATE_ORDER;
+          }
+          break;
+
+        case 'payment':
+          input = json;
+          url = CCConstants.ENDPOINT_PAYMENT_AUTH_PAYMENT;
+          input[CCConstants.SITE_ID] = params;
+          break;
+
+      }
+
+      if (!url) {
+        throw "No REST target found for item type: " + type;
+      }
+
+      //Make the REST call
+      restClient.request(url, input, success, error);
+    };
+
+    /**
+       Persists the update of an item by making an external request to update the item.
+       @private
+       @param {String} type The type of item being deleted.
+       @param {String|Array} id The id of the item being deleted. Either a simple id (String) or
+       a complex id (Array).
+       @param {Object} json Json object representing the updated item.
+       @param {Object} [params] Additional parameters for the update.
+       @param {function} success Succes callback function if the item was successfully updated.
+       @param {function} [error] Error callback function if there was an error in updating the item.
+     */
+    RestAdapter.prototype.persistUpdate = function (type, id, json, params, success, error) {
+      var url, input = {};
+      var pathParam = null;
+      
+      if ($.isFunction(params)) {
+        error = success;
+        success = params;
+        params = null;
+      }
+
+      switch (type) {
+      
+        case 'product':
+          //Not implemented
+        break;
+        
+        case 'order':
+          input = json;
+          url = CCConstants.ENDPOINT_UPDATE_PROFILE_ORDER;
+          input[CCConstants.OP] = CCConstants.UPDATE_OP;
+          break;
+
+        case 'updateOrder':
+          input = json;
+          pathParam = id;
+          url = CCConstants.ENDPOINT_UPDATE_ORDER;
+          break;
+      }
+
+      if (!url) {
+        throw "No REST target found for item type: " + type;
+      }
+
+      //Make the REST call
+      restClient.request(url, input, success, error, pathParam);
+    };
+
+    /**
+       Persists the removal of an item by making an external request to delete the item.
+       @private
+       @param {String} type The type of item being deleted.
+       @param {String|Array} id The id of the item being deleted. Either a simple id (String) or
+       a complex id (Array).
+       @param {Object} [params] Additional parameters for the deletion.
+       @param {function} success Succes callback function if the item was successfully deleted.
+       @param {function} [error] Error callback function if there was an error in deleting the item.
+     */
+    RestAdapter.prototype.persistRemove = function (type, id, params, success, error) {
+      var url, input = {};
+      var pathParam = null;
+      
+      if ($.isFunction(params)) {
+        error = success;
+        success = params;
+        params = null;
+      }
+
+      switch (type) {
+        case 'product':
+          //Not implemented
+          break;
+        
+        case 'order':
+          url = CCConstants.ENDPOINT_REMOVE_PROFILE_INCOMPLETE_ORDER;
+          break;
+      }
+
+      if (!url) {
+        throw "No REST target found for item type: " + type;
+      }
+
+      //Make the REST call
+      restClient.request(url, input, success, error, pathParam);
+    };
+
+    return RestAdapter;
+  }
+);
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Index</a></h2><h3>Modules</h3><ul><li><a href="module-ccKoErrorWrapper.html">ccKoErrorWrapper</a></li><li><a href="module-ccKoExtensions.html">ccKoExtensions</a></li></ul><h3>Classes</h3><ul><li><a href="Address.html">Address</a></li><li><a href="CartViewModel.html">CartViewModel</a></li><li><a href="DynamicProperty.html">DynamicProperty</a></li><li><a href="EventDispatcher.html">EventDispatcher</a></li><li><a href="GiftCardViewModel.html">GiftCardViewModel</a></li><li><a href="GiftProductListingViewModel.html">GiftProductListingViewModel</a></li><li><a href="ko.bindingHandlers.background.html">background</a></li><li><a href="ko.bindingHandlers.carouselSwipe.html">carouselSwipe</a></li><li><a href="ko.bindingHandlers.ccForm.html">ccForm</a></li><li><a href="ko.bindingHandlers.ccLink.html">ccLink</a></li><li><a href="ko.bindingHandlers.ccValidation.html">ccValidation</a></li><li><a href="ko.bindingHandlers.checkbox.html">checkbox</a></li><li><a href="ko.bindingHandlers.chosen.html">chosen</a></li><li><a href="ko.bindingHandlers.contextResourcesNamespace.html">contextResourcesNamespace</a></li><li><a href="ko.bindingHandlers.currency.html">currency</a></li><li><a href="ko.bindingHandlers.datepicker.html">datepicker</a></li><li><a href="ko.bindingHandlers.datepopover.html">datepopover</a></li><li><a href="ko.bindingHandlers.draggable.html">draggable</a></li><li><a href="ko.bindingHandlers.droppable.html">droppable</a></li><li><a href="ko.bindingHandlers.fade.html">fade</a></li><li><a href="ko.bindingHandlers.hover.html">hover</a></li><li><a href="ko.bindingHandlers.imageSource.html">imageSource</a></li><li><a href="ko.bindingHandlers.imageZoom.html">imageZoom</a></li><li><a href="ko.bindingHandlers.localeText.html">localeText</a></li><li><a href="ko.bindingHandlers.makeAccess.html">makeAccess</a></li><li><a href="ko.bindingHandlers.modal.html">modal</a></li><li><a href="ko.bindingHandlers.modalTabbingContraint.html">modalTabbingContraint</a></li><li><a href="ko.bindingHandlers.onRender.html">onRender</a></li><li><a href="ko.bindingHandlers.popeditor.html">popeditor</a></li><li><a href="ko.bindingHandlers.popover.html">popover</a></li><li><a href="ko.bindingHandlers.productImageSource.html">productImageSource</a></li><li><a href="ko.bindingHandlers.propertyEditor.html">propertyEditor</a></li><li><a href="ko.bindingHandlers.radio.html">radio</a></li><li><a href="ko.bindingHandlers.richTextEditor.html">richTextEditor</a></li><li><a href="ko.bindingHandlers.scrollAffix.html">scrollAffix</a></li><li><a href="ko.bindingHandlers.select2.html">select2</a></li><li><a href="ko.bindingHandlers.select2Tags.html">select2Tags</a></li><li><a href="ko.bindingHandlers.selectable.html">selectable</a></li><li><a href="ko.bindingHandlers.slickList.html">slickList</a></li><li><a href="ko.bindingHandlers.slide.html">slide</a></li><li><a href="ko.bindingHandlers.slider.html">slider</a></li><li><a href="ko.bindingHandlers.spectrum.html">spectrum</a></li><li><a href="ko.bindingHandlers.tagsInput.html">tagsInput</a></li><li><a href="ko.bindingHandlers.textCheck.html">textCheck</a></li><li><a href="ko.bindingHandlers.timepicker.html">timepicker</a></li><li><a href="ko.bindingHandlers.triggerMessage.html">triggerMessage</a></li><li><a href="ko.bindingHandlers.validatableTarget.html">validatableTarget</a></li><li><a href="ko.bindingHandlers.validatableValue.html">validatableValue</a></li><li><a href="ko.bindingHandlers.widgetLocaleText.html">widgetLocaleText</a></li><li><a href="koValidation.alphaNumeric.html">alphaNumeric</a></li><li><a href="koValidation.alphaNumericNoSpaces.html">alphaNumericNoSpaces</a></li><li><a href="koValidation.alphaNumericNoSpacesWithSeperators.html">alphaNumericNoSpacesWithSeperators</a></li><li><a href="koValidation.alphaNumericWithSeperators.html">alphaNumericWithSeperators</a></li><li><a href="koValidation.bool.html">bool</a></li><li><a href="koValidation.creditcard.html">creditcard</a></li><li><a href="koValidation.cvv.html">cvv</a></li><li><a href="koValidation.endmonth.html">endmonth</a></li><li><a href="koValidation.endyear.html">endyear</a></li><li><a href="koValidation.importFileName.html">importFileName</a></li><li><a href="koValidation.laterDate.html">laterDate</a></li><li><a href="koValidation.match.html">match</a></li><li><a href="koValidation.mediaZipFileName.html">mediaZipFileName</a></li><li><a href="koValidation.number.html">number</a></li><li><a href="koValidation.observablePattern.html">observablePattern</a></li><li><a href="koValidation.password.html">password</a></li><li><a href="koValidation.price.html">price</a></li><li><a href="koValidation.propertyIdAlreadyInUse.html">propertyIdAlreadyInUse</a></li><li><a href="koValidation.propertyNameAlreadyInUse.html">propertyNameAlreadyInUse</a></li><li><a href="koValidation.restrictSlashCharacters.html">restrictSlashCharacters</a></li><li><a href="koValidation.startmonth.html">startmonth</a></li><li><a href="koValidation.startyear.html">startyear</a></li><li><a href="koValidation.uniqueTrimmed.html">uniqueTrimmed</a></li><li><a href="koValidation.uniqueTrimmedCaseInsensitive.html">uniqueTrimmedCaseInsensitive</a></li><li><a href="koValidation.url.html">url</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.addTemplate.html">addTemplate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDate.html">ccDate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDateTime.html">ccDateTime</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccNumber.html">ccNumber</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.disabled.html">disabled</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.element.html">element</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.embeddedAssistance.html">embeddedAssistance</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.inTabFlow.html">inTabFlow</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.setContextVariable.html">setContextVariable</a></li><li><a href="NavStateViewModel.html">NavStateViewModel</a></li><li><a href="OrderHistoryViewModel.html">OrderHistoryViewModel</a></li><li><a href="OrderViewModel.html">OrderViewModel</a></li><li><a href="ParentOrganisation.html">ParentOrganisation</a></li><li><a href="ProductListingSearchViewModel.html">ProductListingSearchViewModel</a></li><li><a href="ProductListingViewModel.html">ProductListingViewModel</a></li><li><a href="ProductViewModel.html">ProductViewModel</a></li><li><a href="PubSub.topicNames.html">topicNames</a></li><li><a href="resetCVV.html">resetCVV</a></li><li><a href="resetPaymentDetails.html">resetPaymentDetails</a></li><li><a href="SearchRestClient.html">SearchRestClient</a></li><li><a href="UserViewModel.html">UserViewModel</a></li><li><a href="WidgetViewModel.html">WidgetViewModel</a></li><li><a href="WishlistContentViewModel.html">WishlistContentViewModel</a></li></ul><h3>Namespaces</h3><ul><li><a href="ko.bindingHandlers.html">bindingHandlers</a></li><li><a href="ko.extenders.html">extenders</a></li><li><a href="koValidation.html">koValidation</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CCEETagProcessor">CCEETagProcessor</a></li><li><a href="global.html#isValidDeterminewhetherornotthepaymentdetailsobjectisvalidbasedonthevalidityofitscomponentparts.Thiswillnotcauseerrormessagestobedisplayedforanyobservablevaluesthatareunchangedandhaveneverreceivedfocusontherelatedformfield(s).">isValid
+Determine whether or not the payment details object is valid
+based on the validity of its component parts. This will not
+cause error messages to be displayed for any observable values
+that are unchanged and have never received focus on the 
+related form field(s).</a></li><li><a href="global.html#validatePaymentDetailsForceallrelevantmemberobservablestoperformtheirvalidationnow&displaytheerrors(ifany)">validatePaymentDetails
+Force all relevant member observables to perform their
+validation now & display the errors (if any)</a></li></ul>
+</nav>
+
+<br clear="both">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0</a> on Mon Oct 10 2016 10:49:03 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

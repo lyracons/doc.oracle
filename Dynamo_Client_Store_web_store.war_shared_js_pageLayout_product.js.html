@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Dynamo/Client/Store/web/store.war/shared/js/pageLayout/product.js</title>
+    
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    
+    <h1 class="page-title">Source: Dynamo/Client/Store/web/store.war/shared/js/pageLayout/product.js</h1>
+    
+    
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source"><code>/**
+ * @fileoverview Defines a ProductViewModel used to represent a product 
+ * and its properties
+ *
+ */
+
+/*global define */
+define(
+  //-------------------------------------------------------------------
+  // PACKAGE NAME
+  //-------------------------------------------------------------------
+  'pageLayout/product',
+
+  //-------------------------------------------------------------------
+  // DEPENDENCIES
+  //-------------------------------------------------------------------
+  ['knockout', 'ccRestClient', 'ccConstants', 'pubsub', 'CCi18n'],
+
+  function(ko, ccRestClient, CCConstants, pubsub, CCi18n) {
+
+    'use strict';
+
+    //-------------------------------------------------------
+    // View Model
+    //-------------------------------------------------------
+
+    /**
+     * The Product View Model is used to handle product details in category selection, product list,
+     * search results and product details. A product view model may represent one or more SKUs with varying
+     * prices, and which may currently be a sale item.
+     * 
+     * @param {Object} pProduct Object representing product details.
+     * @param {Object} params Additional construction parameters.
+     * 
+     * @public
+     * @class Represents a product.
+     * @name ProductViewModel
+     * @property {Object} product Internally stored product.
+     * @property {number} minPrice Minimum price of product.
+     * @property {number} maxPrice Maximum price of product.
+     * @property {number} productSalePrice Sale price of the product if product is on sale.
+     * @property {number} productListPrice List price of the product.
+     * @property {boolean} isOnSale Flag to convey whether the product is on sale. (i.e. productSalePrice will
+     *   only be meaningful if this flag is raised.)
+     * @property {boolean} hasPriceRange Flag to convery whether product has a price range. (i.e. minPrice and maxPrice
+     *   will only be meaningful is this flag is raised.)
+     * @property {observable&lt;Object>} stockStatus Dictionary object storing stock availability of this product
+     *   and associated SKUs.
+     * @property {Object[]} relatedProducts List of related products using the same object format as `product'.
+     * @property {observable&lt;string>} id Product ID.
+     * @property {observable&lt;string>} repositoryId ID of object in repository.
+     * @property {observable&lt;string>} type Product type.
+     * @property {observable&lt;number>} height Product height.
+     * @property {observable&lt;number>} width Product width.
+     * @property {observable&lt;number>} length Product length.
+     * @property {observable&lt;number>} weight Product weight.
+     * @property {observable&lt;boolean>} active Flag conveying whether product is currently active.
+     * @property {observable&lt;string>} displayName Name of product to display.
+     * @property {observable&lt;string>} brand Product manufacturer. 
+     * @property {observable&lt;string>} description Product description.
+     * @property {observable&lt;string>} longDescription Extended product description.
+     * @property {observable&lt;number>} listPrice Product list price.
+     * @property {observable&lt;number>} salePrice Product sale price, may be unset.
+     * @property {observable&lt;number>} orderLimit Maximum amount of this product available for order.
+     * @property {observable&lt;Object>} stockStatus Stock availability information for this product.
+     * @property {observable&lt;?>} avgCustRating
+     * @property {observable&lt;Object>} parentCategory Direct parent category of this product.
+     * @property {observable&lt;Object[]>} parentCategories Category path of this product as list of categories.
+     * @property {observable&lt;Object[]>} childSKUs List of child SKUs under this product.
+     * @property {observable&lt;Object[]>} relatedProducts List of related Products. 
+     * @property {observable&lt;string>} route URI Path to this product. 
+     * @property {observable&lt;?>} shippingSurcharge
+     * @property {observable&lt;string>} seoDescriptionDerived Derived product description for search engines.
+     * @property {observable&lt;string>} seoKeywordsDerived Derived product keywords for search engines.
+     * @property {observable&lt;?>} seoMetaInfo
+     * @property {observable&lt;string>} seoTitleDerived Derived product title for search engines.
+     * @property {observable&lt;string[]>} fullImageURLs List of URLs to full-sized product images.
+     * @property {observable&lt;string[]>} largeImageURLs List of URLs to large product images.
+     * @property {observable&lt;string[]>} mediumImageURLs List of URLs to medium sized product images.
+     * @property {observable&lt;string[]>} smallImageURLs List of URLs to small product images.
+     * @property {observable&lt;string[]>} sourceImageURLs List of URLs to source images.
+     * @property {observable&lt;string[]>} thumbImageURLs List of URLs to thumbnail images.
+     * @property {observable&lt;string>} primaryFullImageURL URL to primary full-sized image.
+     * @property {observable&lt;string>} primaryLargeImageURL URL to primary large image.
+     * @property {observable&lt;string>} primaryMediumImageURL URL to primary medium image.
+     * @property {observable&lt;string>} primarySmallImageURL URL to primary small image.
+     * @property {observable&lt;string>} primarySourceImageURL URL to primary source image.
+     * @property {observable&lt;string>} primaryThumbImageURL URL to primary thumbnail image.
+     * @property {observable&lt;string>} primaryImageAltText Text to display in product image alt attribute.
+     * @property {observable&lt;string>} primaryImageTitle Text to display in product image title attribute.
+     * @property {observable&lt;Object[]>} productImagesMetadata
+     */
+    function ProductViewModel(pProduct, params) {
+      var self = this;
+      //Emptying child sku array if the data is unavailable (usually in case of related products)
+      if(!pProduct.childSKUs) {
+           pProduct.childSKUs = [];
+      }
+      ko.mapping.fromJS(pProduct, {}, self);
+      self.product             = pProduct;
+      // create observables for the existing properties that didn't come in pProduct data (which are currently been refernced at various places) 
+      var inclusionObservableList = ["id", "salePrice", "listPrice", "primaryFullImageURL", "primaryLargeImageURL", "primaryMediumImageURL", "primarySmallImageURL", "primaryThumbImageURL", "shippingSurcharge", "type", "displayName"];
+      var inclusionObservableArrayList = ["childSKUs", "thumbImageURLs", "smallImageURLs", "mediumImageURLs", "largeImageURLs", "fullImageURLs", "sourceImageURLs", "productImagesMetadata"];
+      for (var recordKey in inclusionObservableList) {
+        if (self[inclusionObservableList[recordKey]] == undefined) {
+          self[inclusionObservableList[recordKey]] = ko.observable('');
+        }
+      }
+      for (var recordKey in inclusionObservableArrayList) {
+        if (self[inclusionObservableArrayList[recordKey]] == undefined) {
+          self[inclusionObservableArrayList[recordKey]] = ko.observableArray([]);
+        }
+      }
+      self.minPrice            = self.getMinimumPrice();
+      self.maxPrice            = self.getMaximumPrice(false);
+      self.productSalePrice    = self.getSalePrice();
+      self.productListPrice    = self.getListPrice();
+      self.isOnSale            = self.isOnSale();
+      self.hasPriceRange       = self.hasRange();
+      self.stockStatus         = ko.observable();
+      self.variantName              = ko.observable();
+      self.variantValue             = ko.observable();
+      self.relatedProducts     = pProduct.relatedProducts;
+      if (self.productVariantOptions &amp;&amp; self.productVariantOptions()) {
+        self.variantOptionsArray = self.populateVariantOptions(ko.mapping.toJS(self.productVariantOptions()));
+      }
+      self.inStock             = ko.observable(false);
+      self.showStockStatus     = ko.observable(false);
+      self.filtered            = ko.observable(false);
+      return self; 
+    }
+    
+    /**
+     * Calculate the minimum price for this product. This will be the lowest price taking
+     * into consideration the prices of child SKUs and whether any SKUs are currently on sale.
+     * 
+     * @name ProductViewModel#getMinimumPrice
+     * @function
+     * @returns {number} Minimum price of this product. 
+     */
+    ProductViewModel.prototype.getMinimumPrice = function() {
+      var self = this;
+      var productPrice, minPrice, sku, skuPrice, index;
+      var productChildSKUsLength = self.childSKUs() ? self.childSKUs().length : 0;       
+      if (self.minActivePrice) {
+        return self.minActivePrice();
+      } else {
+        productPrice = (self.salePrice() || self.salePrice() === 0) ? self.salePrice() : self.listPrice();                
+        if (self.childSKUs()) {
+          if (productChildSKUsLength > 0) {
+            for (var index in self.childSKUs()) {
+              sku = self.childSKUs()[index];
+              skuPrice = (sku.salePrice() || sku.salePrice() === 0) ? sku.salePrice() : sku.listPrice();             
+              if (!skuPrice &amp;&amp; skuPrice != 0) {
+                skuPrice = productPrice;
+              }
+              if ((!minPrice &amp;&amp; minPrice != 0) || skuPrice &lt; minPrice) {
+                minPrice = skuPrice;
+              }
+            }
+          } else {
+            minPrice = productPrice;
+          }
+        }        
+        return minPrice;
+      }
+    };
+
+    /**
+     * Get the maximum price for this product. This will be the highest price for the product taking into
+     * consideration the prices of child SKUs.
+     * 
+     * @name ProductViewModel#getMaximumPrice
+     * @function
+     * @param {boolean} listPriceOnly Only consider the list price.
+     * @returns {number} Maximum price of this product.
+     */
+    ProductViewModel.prototype.getMaximumPrice = function(listPriceOnly) {
+      var self = this;
+      var productPrice, maxPrice, sku, skuPrice, index;
+      var productChildSKUsLength = self.childSKUs().length;        
+      if (self.maxActivePrice &amp;&amp; !listPriceOnly) {
+        return self.maxActivePrice();
+      } else {
+        if (listPriceOnly) {
+          productPrice = self.listPrice();
+        } else {
+          productPrice = (self.salePrice() || self.salePrice() === 0) ? self.salePrice() : self.listPrice();
+        }
+        if (self.childSKUs()) {
+          if (productChildSKUsLength > 0) {
+            for (var index in self.childSKUs()) {
+              sku = self.childSKUs()[index];
+              if (listPriceOnly) {
+                skuPrice = sku.listPrice();
+              } else {
+                skuPrice = (sku.salePrice() || sku.salePrice() === 0) ? sku.salePrice() : sku.listPrice();
+              } 
+              if (!skuPrice &amp;&amp; skuPrice != 0) {
+                skuPrice = productPrice;
+              } 
+              if ((!maxPrice &amp;&amp; maxPrice != 0) || skuPrice > maxPrice) {
+                maxPrice = skuPrice;
+              }
+            }
+          } else {
+            maxPrice = productPrice;
+          }
+        } 
+        return maxPrice;
+      }
+    };
+     
+    /**
+     * Determine if this product is on sale. If a product has variant SKUs then it is
+     * considered on sale if any of the SKUs are on sale.
+     * 
+     * @name ProductViewModel#isOnSale
+     * @function
+     * @returns {boolean} true if this product or any of its child SKUs are on sale, otherwise false.
+     */
+    ProductViewModel.prototype.isOnSale = function() {
+      var self = this;
+      var productChildSKUsLength = self.childSKUs().length;
+      if (!productChildSKUsLength &amp;&amp; self.product.salePrice) {
+        return true;
+      }
+      for (var index in self.childSKUs()) {
+        var sku = self.childSKUs()[index];
+        if (sku.salePrice() != null &amp;&amp; sku.salePrice() >= 0) {
+          return true;
+        }
+      }       
+      return false;
+    };
+    
+    /**
+     * Determine if this product has a price range. It does if minimum and maximum prices are different.
+     * 
+     * @name ProductViewModel#hasRange
+     * @function
+     * @returns {boolean} true if this product has a price range, otherwise false.
+     */
+    ProductViewModel.prototype.hasRange = function() {
+      var self = this;
+      self.minPrice = self.getMinimumPrice();
+      self.maxPrice = self.getMaximumPrice(false);
+      if (self.minPrice != self.maxPrice) {
+        return true;
+      } 
+      return false;
+    };
+    
+    /**
+     * Get this product's list price. If product has one or more than one child skus the list price of
+     * the product is the maximum of list price among the child skus.
+     * 
+     * @name ProductViewModel#getListPrice
+     * @function
+     * @returns {number} Maximum list price of this product.
+     */
+    ProductViewModel.prototype.getListPrice = function() {
+      var self = this;
+      if (self.childSKUs().length >= 1) {
+        return self.getMaximumPrice(true);
+      } else {
+        return self.listPrice();
+      }
+    };
+    
+    /**
+     * Get this product's sale price. If minPrice and maxPrice for a product is same, sale price is
+     * same as minPrice only if product is on sale.
+     * 
+     * @name ProductViewModel#getSalePrice
+     * @function
+     * @returns {number} Sale price of the product. 
+     */
+    ProductViewModel.prototype.getSalePrice = function() {
+      var self = this;
+      if (!self.hasRange() &amp;&amp; self.isOnSale()) {
+        return self.minPrice;
+      } 
+      return self.salePrice();
+    };
+    
+    /**
+     * Fetch the price information for this product via a REST call. On successful response, updates the
+     * view model.
+     * 
+     * @ProductViewModel#getPrices
+     * @function
+     * @param {string} productId Repository ID of product to fetch prices.
+     * @param {string} skuId Repository ID of SKU to limit price results (currently unused).
+     */
+    ProductViewModel.prototype.getPrices = function(productId, skuId) {
+      var self = this;
+      var input = {};
+      // Not using the sku ID, because currently only use the product level
+      // prices for product details. We will need to update this for options
+      // support.
+      var pathParam = productId;
+      var url = CCConstants.ENDPOINT_GET_PRODUCT_PRICES;
+      ccRestClient.request(url, input,
+        // success callback
+        function(data) {
+
+          // Utility function to update the volume pricing levels and numLevels observables.
+          var updateVolumePricing = function (oldVolumePrice, newVolumePrice) {
+            // Update levels observable.
+            oldVolumePrice.levels(newVolumePrice.levels);
+
+            // Update numLevels observable.
+            oldVolumePrice.numLevels(newVolumePrice.numLevels);
+          };
+
+          // Process the data response.
+          if (data.skuPrices) {
+            var skuPricesLength = self.childSKUs().length;
+            var dataSkuLength = data.skuPrices.length;
+            for (var index = 0; index &lt; skuPricesLength; index += 1) {
+              for (var indexData = 0; indexData &lt; dataSkuLength; indexData += 1) {
+                if (self.childSKUs() &amp;&amp; (self.childSKUs()[index].repositoryId() ==  data.skuPrices[indexData].skuId)) {
+                  self.childSKUs()[index].listPrice(data.skuPrices[indexData].listPrice);
+                  self.childSKUs()[index].salePrice(data.skuPrices[indexData].salePrice);
+
+                  // List price list volume price data.
+                  if (data.skuPrices[indexData].hasOwnProperty(CCConstants.LIST_VOLUME_PRICE)) {
+                    if (data.skuPrices[indexData].listVolumePrice.hasOwnProperty(CCConstants.BULK_PRICE)) {
+
+                      updateVolumePricing(self.childSKUs()[index].listVolumePrice.bulkPrice,
+                        data.skuPrices[indexData].listVolumePrice.bulkPrice);
+                    }
+                    else if (data.skuPrices[indexData].listVolumePrice.hasOwnProperty(CCConstants.TIERED_PRICE)) {
+
+                      updateVolumePricing(self.childSKUs()[index].listVolumePrice.tieredPrice,
+                        data.skuPrices[indexData].listVolumePrice.tieredPrice);
+                    }
+                  }
+
+                  // Sale price list volume price data.
+                  if (data.skuPrices[indexData].hasOwnProperty(CCConstants.SALE_VOLUME_PRICE)) {
+                    if (data.skuPrices[indexData].saleVolumePrice.hasOwnProperty(CCConstants.BULK_PRICE)) {
+
+                      updateVolumePricing(self.childSKUs()[index].saleVolumePrice.bulkPrice,
+                        data.skuPrices[indexData].saleVolumePrice.bulkPrice);
+                    }
+                    else if (data.skuPrices[indexData].saleVolumePrice.hasOwnProperty(CCConstants.TIERED_PRICE)) {
+
+                      updateVolumePricing(self.childSKUs()[index].saleVolumePrice.tieredPrice,
+                        data.skuPrices[indexData].saleVolumePrice.tieredPrice);
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          self.hasPriceRange = data.priceRange;
+
+          if (data.priceRange === true) {
+            self.maxPrice = data.priceMax;
+            self.minPrice = data.priceMin;
+          }
+          if (data.list) {
+            self.listPrice(data.list);
+          }
+
+          if (self.product.type === null &amp;&amp; data.skuPrices) {
+            if (self.childSKUs() &amp;&amp; self.childSKUs()[0]) {
+              self.childSKUs()[0].listPrice(data.skuPrices.listPrice || data.list);
+              self.listPrice(data.skuPrices.listPrice || data.list);
+            }
+
+            // List price list volume price data.
+            if (data.skuPrices.hasOwnProperty(CCConstants.LIST_VOLUME_PRICE)) {
+              if (data.skuPrices.listVolumePrice.hasOwnProperty(CCConstants.BULK_PRICE)) {
+
+                updateVolumePricing(self.childSKUs()[0].listVolumePrice.bulkPrice,
+                  data.skuPrices.listVolumePrice.bulkPrice);
+              }
+              else if (data.skuPrices.listVolumePrice.hasOwnProperty(CCConstants.TIERED_PRICE)) {
+
+                updateVolumePricing(self.childSKUs()[0].listVolumePrice.tieredPrice,
+                  data.skuPrices.listVolumePrice.tieredPrice);
+              }
+            }
+
+            // Sale price list volume price data.
+            if (data.skuPrices.hasOwnProperty(CCConstants.SALE_VOLUME_PRICE)) {
+              if (data.skuPrices.saleVolumePrice.hasOwnProperty(CCConstants.BULK_PRICE)) {
+
+                updateVolumePricing(self.childSKUs()[0].saleVolumePrice.bulkPrice,
+                  data.skuPrices.saleVolumePrice.bulkPrice);
+              }
+              else if (data.skuPrices.saleVolumePrice.hasOwnProperty(CCConstants.TIERED_PRICE)) {
+
+                updateVolumePricing(self.childSKUs()[0].saleVolumePrice.tieredPrice,
+                  data.skuPrices.saleVolumePrice.tieredPrice);
+              }
+            }
+          }
+
+          if (data.sale || data.sale === 0) {
+            self.salePrice(data.sale);
+          } else {
+            self.salePrice(null);
+          }
+          if (self.product.type === null &amp;&amp; data.skuPrices) {
+            if (self.childSKUs() &amp;&amp; self.childSKUs()[0]) {
+              self.childSKUs()[0].salePrice(data.skuPrices.salePrice);
+            }
+            self.salePrice(data.skuPrices.salePrice);
+          }
+          $.Topic(pubsub.topicNames.PRODUCT_PRICE_CHANGED).publish();
+        },
+        // error callback
+        function(data) {
+          // do nothing
+        },
+        pathParam);
+    };
+
+    /**
+     * Fetch the stock availability for this product via a REST call. On successful response, updates the
+     * view model.
+     *
+     * @name ProductViewModel#getAvailability
+     * @function
+     * @param {string} productId Repository ID of product to fetch stock availability information.
+     * @param {string} skuId Repository ID of SKU to limit availability results.
+     * @param {string} catalogId Repository ID of catalog.
+     */
+    ProductViewModel.prototype.getAvailability = function(productId, skuId, catalogId) {
+      var self = this;
+      var input = {};
+      var pathParam = productId;
+      input[CCConstants.SKU_ID] = skuId;
+      input[CCConstants.CATALOG] = (catalogId == null ? '' : catalogId);
+      var url = CCConstants.ENDPOINT_GET_PRODUCT_AVAILABILITY;
+      ccRestClient.request(url, input,
+        function(data) {
+          if (data["productSkuInventoryStatus"] != null) {
+            var productSkuInventoryMap = data["productSkuInventoryStatus"];
+            var productChildSKUsLength = self.product.childSKUs ? self.product.childSKUs.length : 0;
+            for (var index = 0; index &lt; productChildSKUsLength; index++) {
+              var sku = self.product.childSKUs[index];
+              sku.quantity = productSkuInventoryMap[sku.repositoryId];
+            }
+          }
+          self.stockStatus(data);
+        },
+        //error callback
+        function(data) {
+          var stockStatus = {
+            stockStatus : CCConstants.OUT_OF_STOCK
+          };
+          self.stockStatus(stockStatus);
+        },
+        pathParam);
+    };
+
+    /**
+     * Get the prices for a specific SKU associated with this product.
+     *
+     * @name ProductViewModel#getSkuPrice
+     * @function
+     * @param {Object} skuObj SKU child object
+     * @returns {Object} Object with 'listPrice' and 'salePrice' keys containing SKU prices.
+     */
+    ProductViewModel.prototype.getSkuPrice = function(skuObj) {
+      var self = this;
+      var skuPrices = {};
+      // TODO(shacking) This loop looks like it could exit early.
+      for (var index in self.childSKUs()) {
+        if (self.childSKUs()[index].repositoryId() ==  skuObj.repositoryId) {
+          skuPrices.listPrice = self.childSKUs()[index].listPrice();
+          skuPrices.salePrice = self.childSKUs()[index].salePrice();
+          skuPrices.listVolumePrice = self.childSKUs()[index].listVolumePrice;
+          skuPrices.saleVolumePrice = self.childSKUs()[index].saleVolumePrice;
+        }
+      }
+      return skuPrices;
+    };
+
+    /**
+     * Populates productVariantOption model to display the variant options of the product.
+     * 
+     * @name ProductViewModel#populateVariantOptions
+     * @function
+     * @param {Object} options product variant options
+     * @returns {Array} variantOptionsArray variant options array.
+     */
+    ProductViewModel.prototype.populateVariantOptions = function(options) {
+      var self = this;
+      if (options &amp;&amp; options !== null &amp;&amp; options.length > 0) {
+        var optionsArray = [], optionValues, productVariantOption, variants;
+
+        for (var i = 0; i &lt; options.length; i++) {
+          optionValues = self.mapOptionsToArray(options[i].optionValueMap);
+          productVariantOption = self.productVariantModel(options[i].optionName, options[i].mapKeyPropertyAttribute, optionValues, options[i].optionId);
+          optionsArray.push(productVariantOption);
+        }
+      } else {
+        self.imgMetadata = self.productImagesMetadata;
+      }
+      return optionsArray;
+    };
+
+    //this method convert the map to array of key value object and sort them based on the enum value
+    //to use it in the select binding of knockout
+    ProductViewModel.prototype.mapOptionsToArray = function(variantOptions) {
+      var optionArray = [];
+      
+      for(var key in variantOptions) {
+        if (variantOptions.hasOwnProperty(key)) {
+          optionArray.push({ key: key, value: variantOptions[key], visible: ko.observable(true) });
+        }
+      }
+      return optionArray;
+    };
+
+    /*this create view model for variant options this contains
+    name of the option, possible list of option values for the option
+    selected option to store the option selected by the user.
+    ID to map the selected option*/
+    ProductViewModel.prototype.productVariantModel= function(optionDisplayName, optionId, optionValues, actualOptionId) {
+      var self = this;
+      var productVariantOption = {};
+      var productImages = {};
+      productVariantOption.optionDisplayName = optionDisplayName;
+      productVariantOption.parent = this;
+      productVariantOption.optionId = optionId;
+      productVariantOption.originalOptionValues = ko.observableArray(optionValues);
+      productVariantOption.actualOptionId = actualOptionId;
+      
+      var showOptionCation = ko.observable(true);
+      if (optionValues.length === 1) {
+        showOptionCation(self.checkOptionValueWithSkus(optionId, optionValues[0].value));
+      }
+      //If there is just one option value in all Skus we dont need any caption
+      if (showOptionCation()) {
+        productVariantOption.optionCaption = CCi18n.t('ns.common:resources.optionCaption', {optionName: optionDisplayName}, true);
+      }
+      productVariantOption.selectedOptionValue = ko.observable();
+      productVariantOption.countVisibleOptions = ko.computed(function() {
+        var count = 0;
+        for (var i = 0; i &lt; productVariantOption.originalOptionValues().length; i++) {
+          if (optionValues[i].visible() == true) {
+            count = count + 1;
+          }
+        }
+        return count;
+      }, productVariantOption);
+      productVariantOption.disable = ko.computed(function() {
+        if (productVariantOption.countVisibleOptions() == 0) {
+          return true;
+        } else {
+          return false;
+        }
+      }, productVariantOption);
+      productVariantOption.selectedOption = ko.computed({
+        write: function(option) {
+          self.filtered(false);
+          productVariantOption.selectedOptionValue(option);
+          self.filterOptionValues(productVariantOption.optionId);
+        },
+        read: function() {
+          return productVariantOption.selectedOptionValue();
+        },
+        owner: productVariantOption
+      });
+      productVariantOption.selectedOption.extend({
+  	  required: { params: true, message:CCi18n.t('ns.common:resources.optionRequiredMsg', {optionName: optionDisplayName}, true) }
+      });
+      productVariantOption.optionValues = ko.computed({
+        write: function(value) {
+          productVariantOption.originalOptionValues(value);
+        },
+        read: function() {
+          return ko.utils.arrayFilter(
+            productVariantOption.originalOptionValues(),
+            function(item) { return item.visible() == true; }
+          );
+        },
+        owner: productVariantOption
+      });
+
+      // DONOT KNOW WHAT TO DO
+      productImages.thumbImageURLs = ( self.thumbImageURLs().length == 1 &amp;&amp; self.thumbImageURLs()[0].indexOf("/img/no-image.jpg&amp;")>0 ) ? 
+          [] : ( self.thumbImageURLs() );
+      productImages.smallImageURLs = (self.smallImageURLs().length == 1 &amp;&amp; self.smallImageURLs()[0].indexOf("/img/no-image.jpg&amp;")>0 ) ? 
+          [] : ( self.smallImageURLs() );
+      productImages.mediumImageURLs = ( self.mediumImageURLs().length == 1 &amp;&amp; self.mediumImageURLs()[0].indexOf("/img/no-image.jpg&amp;")>0 ) ? 
+          [] : ( self.mediumImageURLs );
+      productImages.largeImageURLs = ( self.largeImageURLs().length == 1 &amp;&amp; self.largeImageURLs()[0].indexOf("/img/no-image.jpg&amp;")>0 ) ? 
+          [] : ( self.largeImageURLs() );
+      productImages.fullImageURLs = ( self.fullImageURLs().length == 1 &amp;&amp; self.fullImageURLs()[0].indexOf("/img/no-image.jpg&amp;")>0 ) ? 
+          [] : ( self.fullImageURLs() );
+      productImages.sourceImageURLs = ( self.sourceImageURLs().length == 1 &amp;&amp; self.sourceImageURLs()[0].indexOf("/img/no-image.jpg")>0 ) ? 
+          [] : ( self.sourceImageURLs() );
+         
+      var prodImgMetadata =[];
+      if(self.thumbImageURLs &amp;&amp; self.thumbImageURLs().length>0) {
+        for(var index=0; index&lt; self.thumbImageURLs().length;index++) {
+          prodImgMetadata.push(self.productImagesMetadata[index]);
+        }   
+      }
+
+      return productVariantOption;
+    };
+
+    //this method is triggered whenever there is a change to the selected option.
+    ProductViewModel.prototype.filterOptionValues = function(selectedOptionId) {
+      var self = this;
+
+      if (self.filtered()) {
+        return;
+      }
+      var variantOptions = self.variantOptionsArray;
+      for (var i = 0; i &lt; variantOptions.length; i++) {
+        var currentOption = variantOptions[i];
+        var matchingSkus = self.getMatchingSKUs(variantOptions[i].optionId);
+        var optionValues = self.updateOptionValuesFromSku(matchingSkus, selectedOptionId, currentOption);
+        variantOptions[i].optionValues(optionValues);
+        self.filtered(true);
+      }
+      self.updateSingleSelection(selectedOptionId);
+    };
+
+    // get all the matching SKUs
+    ProductViewModel.prototype.getMatchingSKUs = function(optionId) {
+    
+      var self = this;
+
+      var childSkus = self.childSKUs();
+      var matchingSkus = [];
+      var variantOptions = self.variantOptionsArray;
+      var selectedOptionMap = {};
+      for (var j = 0; j &lt; variantOptions.length; j++) {
+        if (variantOptions[j].optionId != optionId &amp;&amp; variantOptions[j].selectedOption() != undefined) {
+          selectedOptionMap[variantOptions[j].optionId] = variantOptions[j].selectedOption().value;
+        }
+      }
+      for (var i = 0; i &lt; childSkus.length; i++) {
+        var skuMatched = true;
+        for (var key in selectedOptionMap) {
+          if (selectedOptionMap.hasOwnProperty(key)) {
+            if (!childSkus[i].dynamicPropertyMapLong[key] ||
+              childSkus[i].dynamicPropertyMapLong[key]() != selectedOptionMap[key]) {
+              skuMatched = false;
+              break;
+            }
+          }
+        }
+        if (skuMatched) {
+          matchingSkus.push(childSkus[i]);
+        }
+      }
+      return matchingSkus;
+    };
+
+    //this method constructs option values for all the options other than selected option
+    //from the matching skus.
+    ProductViewModel.prototype.updateOptionValuesFromSku = function (skus, selectedOptionID, currentOption) {
+      var optionId = currentOption.optionId;
+      var options = [];
+      var optionValues = currentOption.originalOptionValues();
+        for (var k = 0; k &lt; skus.length; k++) {
+          var optionValue = skus[k].dynamicPropertyMapLong[optionId];
+          if (optionValue!= undefined ) {
+            options.push(optionValue());
+          }
+        }
+        for (var j = 0; j &lt; optionValues.length; j++) {
+          var value = optionValues[j].value;
+          var visible = false;
+          var index = options.indexOf(value);
+          if (index != -1) {
+            visible = true;
+          }
+          optionValues[j].visible(visible);
+        }
+      return optionValues;
+    };
+
+    //This method updates the selection value for the options wiht single option values.
+    ProductViewModel.prototype.updateSingleSelection = function(selectedOptionID) {
+      var self = this;
+
+      var variantOptions = self.variantOptionsArray;
+      for (var i = 0; i &lt; variantOptions.length; i++) {
+        var optionId = variantOptions[i].optionId;
+        if (variantOptions[i].countVisibleOptions() == 1 &amp;&amp; variantOptions[i].selectedOption()== undefined &amp;&amp; optionId != selectedOptionID ) {
+          var isValidForSingleSelection = self.validForSingleSelection(optionId);
+          var optionValues = variantOptions[i].originalOptionValues();
+          for (var j = 0; j &lt; optionValues.length; j++) {
+            if (optionValues[j].visible() == true) {
+              variantOptions[i].selectedOption(optionValues[j]);
+              break;
+            }
+          }
+        }
+      }
+    };
+
+    //This method returns true if the option passed is the only one not selected
+    //and all other options are either selected or disabled.
+    ProductViewModel.prototype.validForSingleSelection = function(optionId) {
+      var self = this;
+
+      var variantOptions = self.variantOptionsArray;
+      for (var j = 0; j &lt; variantOptions.length; j++) {
+        if (variantOptions[j].disable() || (variantOptions[j].optionId != optionId &amp;&amp; variantOptions[j].selectedOption()!= undefined)) {
+          return true;
+        }
+        if (variantOptions[j].optionId != optionId &amp;&amp; variantOptions[j].selectedOption()== undefined &amp;&amp; variantOptions[j].countVisibleOptions() == 1) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    //this method is triggered to check if the option value is present in all the child Skus.
+    ProductViewModel.prototype.checkOptionValueWithSkus = function(optionId, value) {
+      var self = this;
+      var childSkus = self.childSKUs();
+      var childSkusLength = childSkus.length;
+      for (var i = 0; i &lt; childSkusLength; i++) {
+        if (!childSkus[i].dynamicPropertyMapLong[optionId] || childSkus[i].dynamicPropertyMapLong[optionId]() === undefined) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // this method  returns a map of all the options selected by the user for the product
+    ProductViewModel.prototype.getSelectedSkuOptions = function(variantOptions) {
+      var selectedOptions = [];
+      for (var i = 0; i &lt; variantOptions.length; i++) {
+        if (!variantOptions[i].disable()) {
+          selectedOptions.push({'optionName': variantOptions[i].optionDisplayName, 'optionValue': variantOptions[i].selectedOption().key, 'optionId': variantOptions[i].actualOptionId, 'optionValueId': variantOptions[i].selectedOption().value});
+        }
+      }
+      return selectedOptions;
+    };
+
+    return ProductViewModel;
+  }
+);
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Index</a></h2><h3>Modules</h3><ul><li><a href="module-ccKoErrorWrapper.html">ccKoErrorWrapper</a></li><li><a href="module-ccKoExtensions.html">ccKoExtensions</a></li></ul><h3>Classes</h3><ul><li><a href="Address.html">Address</a></li><li><a href="CartViewModel.html">CartViewModel</a></li><li><a href="DynamicProperty.html">DynamicProperty</a></li><li><a href="EventDispatcher.html">EventDispatcher</a></li><li><a href="GiftCardViewModel.html">GiftCardViewModel</a></li><li><a href="GiftProductListingViewModel.html">GiftProductListingViewModel</a></li><li><a href="ko.bindingHandlers.background.html">background</a></li><li><a href="ko.bindingHandlers.carouselSwipe.html">carouselSwipe</a></li><li><a href="ko.bindingHandlers.ccForm.html">ccForm</a></li><li><a href="ko.bindingHandlers.ccLink.html">ccLink</a></li><li><a href="ko.bindingHandlers.ccValidation.html">ccValidation</a></li><li><a href="ko.bindingHandlers.checkbox.html">checkbox</a></li><li><a href="ko.bindingHandlers.chosen.html">chosen</a></li><li><a href="ko.bindingHandlers.contextResourcesNamespace.html">contextResourcesNamespace</a></li><li><a href="ko.bindingHandlers.currency.html">currency</a></li><li><a href="ko.bindingHandlers.datepicker.html">datepicker</a></li><li><a href="ko.bindingHandlers.datepopover.html">datepopover</a></li><li><a href="ko.bindingHandlers.draggable.html">draggable</a></li><li><a href="ko.bindingHandlers.droppable.html">droppable</a></li><li><a href="ko.bindingHandlers.fade.html">fade</a></li><li><a href="ko.bindingHandlers.hover.html">hover</a></li><li><a href="ko.bindingHandlers.imageSource.html">imageSource</a></li><li><a href="ko.bindingHandlers.imageZoom.html">imageZoom</a></li><li><a href="ko.bindingHandlers.localeText.html">localeText</a></li><li><a href="ko.bindingHandlers.makeAccess.html">makeAccess</a></li><li><a href="ko.bindingHandlers.modal.html">modal</a></li><li><a href="ko.bindingHandlers.modalTabbingContraint.html">modalTabbingContraint</a></li><li><a href="ko.bindingHandlers.onRender.html">onRender</a></li><li><a href="ko.bindingHandlers.popeditor.html">popeditor</a></li><li><a href="ko.bindingHandlers.popover.html">popover</a></li><li><a href="ko.bindingHandlers.productImageSource.html">productImageSource</a></li><li><a href="ko.bindingHandlers.propertyEditor.html">propertyEditor</a></li><li><a href="ko.bindingHandlers.radio.html">radio</a></li><li><a href="ko.bindingHandlers.richTextEditor.html">richTextEditor</a></li><li><a href="ko.bindingHandlers.scrollAffix.html">scrollAffix</a></li><li><a href="ko.bindingHandlers.select2.html">select2</a></li><li><a href="ko.bindingHandlers.select2Tags.html">select2Tags</a></li><li><a href="ko.bindingHandlers.selectable.html">selectable</a></li><li><a href="ko.bindingHandlers.slickList.html">slickList</a></li><li><a href="ko.bindingHandlers.slide.html">slide</a></li><li><a href="ko.bindingHandlers.slider.html">slider</a></li><li><a href="ko.bindingHandlers.spectrum.html">spectrum</a></li><li><a href="ko.bindingHandlers.tagsInput.html">tagsInput</a></li><li><a href="ko.bindingHandlers.textCheck.html">textCheck</a></li><li><a href="ko.bindingHandlers.timepicker.html">timepicker</a></li><li><a href="ko.bindingHandlers.triggerMessage.html">triggerMessage</a></li><li><a href="ko.bindingHandlers.validatableTarget.html">validatableTarget</a></li><li><a href="ko.bindingHandlers.validatableValue.html">validatableValue</a></li><li><a href="ko.bindingHandlers.widgetLocaleText.html">widgetLocaleText</a></li><li><a href="koValidation.alphaNumeric.html">alphaNumeric</a></li><li><a href="koValidation.alphaNumericNoSpaces.html">alphaNumericNoSpaces</a></li><li><a href="koValidation.alphaNumericNoSpacesWithSeperators.html">alphaNumericNoSpacesWithSeperators</a></li><li><a href="koValidation.alphaNumericWithSeperators.html">alphaNumericWithSeperators</a></li><li><a href="koValidation.bool.html">bool</a></li><li><a href="koValidation.creditcard.html">creditcard</a></li><li><a href="koValidation.cvv.html">cvv</a></li><li><a href="koValidation.endmonth.html">endmonth</a></li><li><a href="koValidation.endyear.html">endyear</a></li><li><a href="koValidation.importFileName.html">importFileName</a></li><li><a href="koValidation.laterDate.html">laterDate</a></li><li><a href="koValidation.match.html">match</a></li><li><a href="koValidation.mediaZipFileName.html">mediaZipFileName</a></li><li><a href="koValidation.number.html">number</a></li><li><a href="koValidation.observablePattern.html">observablePattern</a></li><li><a href="koValidation.password.html">password</a></li><li><a href="koValidation.price.html">price</a></li><li><a href="koValidation.propertyIdAlreadyInUse.html">propertyIdAlreadyInUse</a></li><li><a href="koValidation.propertyNameAlreadyInUse.html">propertyNameAlreadyInUse</a></li><li><a href="koValidation.restrictSlashCharacters.html">restrictSlashCharacters</a></li><li><a href="koValidation.startmonth.html">startmonth</a></li><li><a href="koValidation.startyear.html">startyear</a></li><li><a href="koValidation.uniqueTrimmed.html">uniqueTrimmed</a></li><li><a href="koValidation.uniqueTrimmedCaseInsensitive.html">uniqueTrimmedCaseInsensitive</a></li><li><a href="koValidation.url.html">url</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.addTemplate.html">addTemplate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDate.html">ccDate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDateTime.html">ccDateTime</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccNumber.html">ccNumber</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.disabled.html">disabled</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.element.html">element</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.embeddedAssistance.html">embeddedAssistance</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.inTabFlow.html">inTabFlow</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.setContextVariable.html">setContextVariable</a></li><li><a href="NavStateViewModel.html">NavStateViewModel</a></li><li><a href="OrderHistoryViewModel.html">OrderHistoryViewModel</a></li><li><a href="OrderViewModel.html">OrderViewModel</a></li><li><a href="ParentOrganisation.html">ParentOrganisation</a></li><li><a href="ProductListingSearchViewModel.html">ProductListingSearchViewModel</a></li><li><a href="ProductListingViewModel.html">ProductListingViewModel</a></li><li><a href="ProductViewModel.html">ProductViewModel</a></li><li><a href="PubSub.topicNames.html">topicNames</a></li><li><a href="resetCVV.html">resetCVV</a></li><li><a href="resetPaymentDetails.html">resetPaymentDetails</a></li><li><a href="SearchRestClient.html">SearchRestClient</a></li><li><a href="UserViewModel.html">UserViewModel</a></li><li><a href="WidgetViewModel.html">WidgetViewModel</a></li><li><a href="WishlistContentViewModel.html">WishlistContentViewModel</a></li></ul><h3>Namespaces</h3><ul><li><a href="ko.bindingHandlers.html">bindingHandlers</a></li><li><a href="ko.extenders.html">extenders</a></li><li><a href="koValidation.html">koValidation</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CCEETagProcessor">CCEETagProcessor</a></li><li><a href="global.html#isValidDeterminewhetherornotthepaymentdetailsobjectisvalidbasedonthevalidityofitscomponentparts.Thiswillnotcauseerrormessagestobedisplayedforanyobservablevaluesthatareunchangedandhaveneverreceivedfocusontherelatedformfield(s).">isValid
+Determine whether or not the payment details object is valid
+based on the validity of its component parts. This will not
+cause error messages to be displayed for any observable values
+that are unchanged and have never received focus on the 
+related form field(s).</a></li><li><a href="global.html#validatePaymentDetailsForceallrelevantmemberobservablestoperformtheirvalidationnow&displaytheerrors(ifany)">validatePaymentDetails
+Force all relevant member observables to perform their
+validation now & display the errors (if any)</a></li></ul>
+</nav>
+
+<br clear="both">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0</a> on Mon Oct 10 2016 10:49:02 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

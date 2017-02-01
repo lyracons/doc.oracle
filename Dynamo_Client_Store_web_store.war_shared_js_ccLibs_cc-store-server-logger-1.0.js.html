@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Dynamo/Client/Store/web/store.war/shared/js/ccLibs/cc-store-server-logger-1.0.js</title>
+    
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    
+    <h1 class="page-title">Source: Dynamo/Client/Store/web/store.war/shared/js/ccLibs/cc-store-server-logger-1.0.js</h1>
+    
+    
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source"><code>/**
+ * @fileoverview CCStoreServerLogger Class
+ * 
+ * It is used to log information to the server. This also types the
+ * messages so they show up (as possible) as debug, info, warn and error messages.
+ * 
+ * Usage:
+ * 
+ * 1) Include in the proper require.js main module with the following
+ * line:
+ * 
+ * ccStoreServerLogger: '/shared/js/ccLibs/cc-store-server-logger-1.0'
+ * 
+ * 2) include in the module as follows:
+ * 
+ * define(
+ *   [... 'ccStoreServerLogger' ...]
+ *   function( ... StoreServerLogger ...)
+ * )
+ * 
+ * 3) Create a singleton instance for the library
+ *    storeServerLog = StoreServerLogger.getInstance();
+ * 
+ * 4) invoke as follows:
+ *  storeServerLog.logInfo("eventKey", "Your message here.", "eventID");
+ *  storeServerLog.logWarning("eventKey", "Your message here.", "eventID");
+ *  storeServerLog.logDebug("eventKey", "Your message here.", "eventID");
+ *  storeServerLog.logError("eventKey", "Your message here.", "eventID");
+ *  
+ *
+ */
+define (
+  //-------------------------------------------------------------------
+  // PACKAGE NAME
+  //-------------------------------------------------------------------
+  'ccStoreServerLogger',
+
+  //--------------------------------------------------------------------
+  // DEPENDENCIES
+  //-------------------
+  ['knockout', 'pubsub', 'jquery', 'ccRestClient', 'ccConstants', 'storageApi', 'pageViewTracker'],
+
+  //-------------------
+  // MODULE DEFINITION
+  //-----
+  function (ko, PubSub, $, ccRestClient, CCConstants, storageApi, pageViewTracker) {
+    "use strict";
+
+    var DEFAULT_EVENTKEY = "UnstatedEvent";
+
+    /**
+     * Creates a storeServerLogger object.
+     * @private
+     * @name CCStoreServerLogger
+     * @class CCStoreServerLogger
+     */
+    function CCStoreServerLogger() {
+      if (CCStoreServerLogger.singleInstance) {
+        throw new Error ("Cannot instantiate more than one CCStoreServerLogger. Use getInstance() method");
+      }
+      var self = this;
+      self.loggingEnabled = true;
+      var currentLogger = "";
+      var currentPageId = "";
+      var enabledLoggerList = [];
+      var pagesToLog = [];
+      /**
+       * The existing logger list.
+       * If a new logger is to be used, it must be present in this array
+       */
+      var loggerList = ["debug","info","warning","error"];
+
+      /**
+       * Object containing predefined events that can be logged, along with the eventIDs.
+       */
+      var eventsToLog = {
+        "getPage"                : "0001",
+        "paymentTimeOut"         : "0002",
+        "createOrderFailure"     : "0003",
+        "updateOrderFailure"     : "0004",
+        "paymentGroupFailure"    : "0005",
+        "orderSubmissionFailure" : "0006"
+      };
+
+      /**
+       * An object that contains the messages that will be logged,
+       * along with the event as its key, that invoked the getMessage function
+       */
+      var messageResource = {
+        "getPage"                : "Landed on __pageId__ page",
+        "paymentTimeOut"         : "Unable to Authorize payment due to time-out, while placing order for order ID __orderId__",
+        "createOrderFailure"     : "Unable to create order due to error code __errorCode__",
+        "updateOrderFailure"     : "Unable to update the order with order ID __orderId__ due to error code __errorCode__",
+        "paymentGroupFailure"    : "Unable to place order for order ID __orderId__ as the payment state is found to be " +
+                                   "__paymentState__ for the payment group ID __paymentGroupId__",
+        "orderSubmissionFailure" : "Order Submission Failed for order with order ID __orderId__"
+      };
+
+      /**
+       * An object that contains the logType that will be a part of logMessage.
+       * It is mapped to the loglevel
+       */
+      var logLevelResource = {
+        "error"   : "[ERROR]",
+        "warning" : "[WARN]",
+        "info"    : "[INFO]",
+        "debug"   : "[DEBUG]"
+      };
+
+      /**
+       * Saves the logger level to local storage
+       * @param {String} logger - The logLevel to be stored in local storage
+       */
+      var setStoredLogLevel = function (logger) {
+        try {
+          storageApi.getInstance().setItem("logLevel", logger);
+        } catch (pError) {
+        }
+      };
+
+      /**
+       * Get the logger level from local storage
+       */
+      var getStoredLogLevel = function () {
+        var localData = null;
+        try {
+          localData = storageApi.getInstance().getItem("logLevel");
+        } catch (pError) {
+        }
+        return localData;
+      };
+
+      /**
+       * Called when the logLevel is changed
+       * Sets the logger values, to follow hierarchy of loggers 
+       * @param {String} newLogger - The new log level, that we want to use
+       */
+      var updatedLoggerList = function (newLogger) {
+        var enabledLoggers = [];
+        switch (newLogger) {
+          case "debug" :
+            enabledLoggers.push("debug");
+          case "info" :
+            enabledLoggers.push("info");
+          case "warning" :
+            enabledLoggers.push("warning");
+          case "error" :
+            enabledLoggers.push("error");
+            break;
+          default :
+            enabledLoggers = enabledLoggerList;
+        }
+        return enabledLoggers;
+      };
+
+      /**
+       * Sets the logger level to default ie info
+       */
+      self.setDefaultLogLevel = function () {
+        if (currentLogger != "info") {
+          currentLogger = "info";
+          enabledLoggerList = updatedLoggerList(currentLogger);
+          setStoredLogLevel(currentLogger);
+        }
+      };
+
+      /**
+       * Sets the loggerLevel to one of the available loggers
+       * @param {String} logLevel - Sets the logLevel to the passed loggerLevel
+       * and updates the value of enabledLoggerList accordingly
+       */
+      self.setLogLevel = function (logLevel) {
+        if ((loggerList.indexOf(logLevel.toLowerCase()) > -1) &amp;&amp;
+          currentLogger != logLevel.toLowerCase()) {
+          currentLogger = logLevel.toLowerCase();
+          enabledLoggerList = updatedLoggerList(currentLogger);
+          setStoredLogLevel(logLevel);
+        }
+      };
+
+      /**
+       * If the Log Level is not stored in local storage, initialize enabledLoggerList to a default value
+       * Else load the logger from local storage, and initialize the
+       * enabledLoggerList array accordingly
+       */
+      if (!getStoredLogLevel()) {
+        self.setDefaultLogLevel();
+      } else {
+        currentLogger = getStoredLogLevel().toLowerCase();
+        enabledLoggerList = updatedLoggerList(currentLogger);
+      }
+
+      /**
+       * Saves the array of pages to log to the local storage, in the form of comma-separated string
+       * @param {Array} pageIdList - Array of pageIds, on which data should be logged
+       */
+      var setStoredPagesToLog = function (pageIdList) {
+        try {
+          storageApi.getInstance().setItem("pageIdListToLog", pageIdList);
+        } catch (pError) {
+        }
+      };
+
+      /**
+       * Get the List of pages to log from local storage
+       */
+      var getStoredPagesToLog = function () {
+        var localData = null;
+        try {
+          localData = storageApi.getInstance().getItem("pageIdListToLog");
+          localData = localData.split(",");
+        } catch (pError) {
+        }
+        return localData;
+      };
+
+      /**
+       * Sets the list of pageIds, on which data should be logged
+       * @param {Array} pageIdList - An array containing the list of pageId on which data should be logged
+       */
+      self.setPagesToLog = function (pageIdList) {
+        if (pageIdList != null) {
+          pagesToLog = pageIdList;
+          setStoredPagesToLog(pagesToLog);
+        }
+      };
+
+      /**
+       * Adds a pageId to the list of pageIds, on which data should be logged
+       * @param {String} pageId - PageId to be added to the list of pages,
+       * for which logging is enabled
+       */
+      self.addPageIdToLog = function (pageId) {
+        if(pagesToLog.indexOf(pageId) &lt; 0) {
+          pagesToLog.push(pageId);
+          setStoredPagesToLog(pagesToLog);
+        }
+      };
+
+      /**
+       * Disable logging from the pageId. Data will not be logged on this page, anymore
+       * @param {String} pageId - PageId to be removed from the list of pages,
+       * for which logging should be enabled
+       */
+      self.disablePageIdToLog = function (pageId) {
+        var self = this;
+        if (pageId != null &amp;&amp; (pagesToLog.indexOf(pageId) > -1)) {
+          pagesToLog.splice(pagesToLog.indexOf(pageId), 1);
+          self.setPagesToLog(pagesToLog);
+        }
+      };
+
+      /**
+       * If the pages to be logged is not stored in local storage, initialize data from
+       * the array list provided here, else load the data from local storage and
+       * initialize self.pagesToLog object accordingly
+       */
+      if (!getStoredPagesToLog()) {
+        var pageIdList = ["checkout", "payment", "confirmation"];
+        self.setPagesToLog(pageIdList);
+      } else {
+        pagesToLog = getStoredPagesToLog();
+      }
+
+      /**
+       * Sends data to the server for logging
+       * @param {String} loglevel - The log level trying to log the data
+       * @param {Object} track - The data to be logged
+       */
+      var reportDataToServer = function (loglevel, track) {
+        var inputData = {};
+        var successFunc = function (param) {
+        };
+        var errorFunc = function(param) {
+        };
+        if (track != null &amp;&amp; loglevel != null) {
+          inputData = {logLevel : loglevel, messages : track };
+          ccRestClient.request(CCConstants.ENDPOINT_LOGS_CREATE_LOG, inputData, successFunc, errorFunc);
+        }
+      };
+
+      /**
+       * This method creates Object, that will be logged to server and calls function to log data to server
+       * @param {String} eventId - The eventId associated with the event
+       * @param {String} messageData - The message to be logged to the server
+       * @param {String} loglevel - The log level trying to log data
+       */
+      var logData = function (eventId, messageData, loglevel) {
+        var logType = logLevelResource[loglevel];
+        if (logType != null) {
+          var visitorId = pageViewTracker.getVisitorId();
+          var visitId = pageViewTracker.getVisitId();
+          var logMessage = eventId + "-" + logType + " " + messageData + ", " + visitId + ", " + visitorId;
+          var logObject = {LogData : logMessage};
+          var track = [];
+          track.push(logObject);
+          reportDataToServer(loglevel, track);
+        }
+      };
+
+      /**
+       * Filter to identify if the passed parameters are valid, and should the data
+       * be logged to server based on pageId, logLevel, and loggingEnabled flag.
+       * If everything is good, it will call a function to log the data
+       * Also generates an eventID based on eventKey
+       * @param {String} eventKey - The key associated with the event
+       * @param {String} loglevel - The type of logger that wants to log data
+       * @param {String} messageData - The message to be logged
+       * @param {String} eventID - The eventID for the event being logged
+       * @param {Object} self - The object of this library
+       */
+      var log = function (eventKey, loglevel, messageData, eventID, self) {
+        if (self.loggingEnabled &amp;&amp; (enabledLoggerList.indexOf(loglevel) > -1) &amp;&amp;
+         (pagesToLog.indexOf(currentPageId) > -1)) {
+          if (messageData != null) {
+            // This should never happen
+            if (eventKey == null || eventKey == "") {
+              eventKey = DEFAULT_EVENTKEY;
+            }
+            if (eventID == null) {
+              eventID = eventsToLog[eventKey];
+              if (eventID == null) {
+                eventID = eventKey;
+              }
+            }
+            logData(eventID, messageData, loglevel);
+          }
+        }
+      };
+
+      /**
+       * Info logging method
+       * @param {String} eventKey - The event to be logged on the server
+       * @param {String} messageData - The message to be logged on the server
+       * @param {String} eventID - The eventID for the event being logged
+       */
+      self.logInfo = function (eventKey, messageData, eventID) {
+        var self = this;
+        var loglevel = "info";
+        log(eventKey, loglevel, messageData, eventID, self);
+      };
+
+      /**
+       * Warning logging method
+       * @param {String} eventKey - The event to be logged on the server
+       * @param {String} messageData - The message to be logged on the server
+       * @param {String} eventID - The eventID for the event being logged
+       */
+      self.logWarning = function (eventKey, messageData, eventID) {
+        var self = this;
+        var loglevel = "warning";
+        log(eventKey, loglevel, messageData, eventID, self);
+      };
+
+      /**
+       * Debug logging method
+       * @param {String} eventKey - The event to be logged on the server
+       * @param {String} messageData - The message to be logged on the server
+       * @param {String} eventID - The eventID for the event being logged
+       */
+      self.logDebug = function (eventKey, messageData, eventID) {
+        var self = this;
+        var loglevel = "debug";
+        log(eventKey, loglevel, messageData,eventID, self);
+      };
+
+      /**
+       * Error logging method
+       * @param {String} eventKey - The event to be logged on the server
+       * @param {String} messageData - The message to be logged on the server
+       * @param {String} eventID - The eventID for the event being logged
+       */
+      self.logError = function (eventKey, messageData, eventID) {
+        var self = this;
+        var loglevel = "error";
+        log(eventKey, loglevel, messageData, eventID, self);
+      };
+
+      /**
+       * Given the eventKey and parameters, it returns the string message
+       * @param {String} eventKey - The key for the event that invoked the function
+       * @param {Object} param - The parameters passed in, to replace values in messages
+       * For example param = {errorCode : "12345" , orderId : "123"};
+       */
+      self.getMessage = function (eventKey, param) {
+        var arg = "";
+        if (eventKey != null) {
+          var message = messageResource[eventKey];
+          if (message != null) {
+            for (var i = 0; i &lt; Object.keys(param).length; i++) {
+              arg = Object.keys(param)[i];
+              message = message.replace("__" + arg + "__", param[arg]);
+            }
+          }
+        }
+        return message;
+      };
+
+      /**
+       * Called when a new page-layout is loaded.
+       * Sets the value of currentPageId
+       * @param {Object} args - data returned when the page is loaded
+       * @param {Object} eventData - Object containing pageId, which is used to set current pageID
+       */
+      var pageLoaded = function (args, eventData) {
+        currentPageId = eventData.pageId;
+      };
+
+      $.Topic(PubSub.topicNames.PAGE_LAYOUT_LOADED).subscribe(pageLoaded);
+    }
+
+    /**
+     * Method to return an instance of library.
+     * If the instance is not available, create a new instance
+     */
+    CCStoreServerLogger.getInstance = function () {
+      if (!CCStoreServerLogger.singleInstance) {
+        CCStoreServerLogger.singleInstance = new CCStoreServerLogger();
+      }
+      return CCStoreServerLogger.singleInstance;
+    };
+
+    return CCStoreServerLogger;
+  }
+);</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Index</a></h2><h3>Modules</h3><ul><li><a href="module-ccKoErrorWrapper.html">ccKoErrorWrapper</a></li><li><a href="module-ccKoExtensions.html">ccKoExtensions</a></li></ul><h3>Classes</h3><ul><li><a href="Address.html">Address</a></li><li><a href="CartViewModel.html">CartViewModel</a></li><li><a href="DynamicProperty.html">DynamicProperty</a></li><li><a href="EventDispatcher.html">EventDispatcher</a></li><li><a href="GiftCardViewModel.html">GiftCardViewModel</a></li><li><a href="GiftProductListingViewModel.html">GiftProductListingViewModel</a></li><li><a href="ko.bindingHandlers.background.html">background</a></li><li><a href="ko.bindingHandlers.carouselSwipe.html">carouselSwipe</a></li><li><a href="ko.bindingHandlers.ccForm.html">ccForm</a></li><li><a href="ko.bindingHandlers.ccLink.html">ccLink</a></li><li><a href="ko.bindingHandlers.ccValidation.html">ccValidation</a></li><li><a href="ko.bindingHandlers.checkbox.html">checkbox</a></li><li><a href="ko.bindingHandlers.chosen.html">chosen</a></li><li><a href="ko.bindingHandlers.contextResourcesNamespace.html">contextResourcesNamespace</a></li><li><a href="ko.bindingHandlers.currency.html">currency</a></li><li><a href="ko.bindingHandlers.datepicker.html">datepicker</a></li><li><a href="ko.bindingHandlers.datepopover.html">datepopover</a></li><li><a href="ko.bindingHandlers.draggable.html">draggable</a></li><li><a href="ko.bindingHandlers.droppable.html">droppable</a></li><li><a href="ko.bindingHandlers.fade.html">fade</a></li><li><a href="ko.bindingHandlers.hover.html">hover</a></li><li><a href="ko.bindingHandlers.imageSource.html">imageSource</a></li><li><a href="ko.bindingHandlers.imageZoom.html">imageZoom</a></li><li><a href="ko.bindingHandlers.localeText.html">localeText</a></li><li><a href="ko.bindingHandlers.makeAccess.html">makeAccess</a></li><li><a href="ko.bindingHandlers.modal.html">modal</a></li><li><a href="ko.bindingHandlers.modalTabbingContraint.html">modalTabbingContraint</a></li><li><a href="ko.bindingHandlers.onRender.html">onRender</a></li><li><a href="ko.bindingHandlers.popeditor.html">popeditor</a></li><li><a href="ko.bindingHandlers.popover.html">popover</a></li><li><a href="ko.bindingHandlers.productImageSource.html">productImageSource</a></li><li><a href="ko.bindingHandlers.propertyEditor.html">propertyEditor</a></li><li><a href="ko.bindingHandlers.radio.html">radio</a></li><li><a href="ko.bindingHandlers.richTextEditor.html">richTextEditor</a></li><li><a href="ko.bindingHandlers.scrollAffix.html">scrollAffix</a></li><li><a href="ko.bindingHandlers.select2.html">select2</a></li><li><a href="ko.bindingHandlers.select2Tags.html">select2Tags</a></li><li><a href="ko.bindingHandlers.selectable.html">selectable</a></li><li><a href="ko.bindingHandlers.slickList.html">slickList</a></li><li><a href="ko.bindingHandlers.slide.html">slide</a></li><li><a href="ko.bindingHandlers.slider.html">slider</a></li><li><a href="ko.bindingHandlers.spectrum.html">spectrum</a></li><li><a href="ko.bindingHandlers.tagsInput.html">tagsInput</a></li><li><a href="ko.bindingHandlers.textCheck.html">textCheck</a></li><li><a href="ko.bindingHandlers.timepicker.html">timepicker</a></li><li><a href="ko.bindingHandlers.triggerMessage.html">triggerMessage</a></li><li><a href="ko.bindingHandlers.validatableTarget.html">validatableTarget</a></li><li><a href="ko.bindingHandlers.validatableValue.html">validatableValue</a></li><li><a href="ko.bindingHandlers.widgetLocaleText.html">widgetLocaleText</a></li><li><a href="koValidation.alphaNumeric.html">alphaNumeric</a></li><li><a href="koValidation.alphaNumericNoSpaces.html">alphaNumericNoSpaces</a></li><li><a href="koValidation.alphaNumericNoSpacesWithSeperators.html">alphaNumericNoSpacesWithSeperators</a></li><li><a href="koValidation.alphaNumericWithSeperators.html">alphaNumericWithSeperators</a></li><li><a href="koValidation.bool.html">bool</a></li><li><a href="koValidation.creditcard.html">creditcard</a></li><li><a href="koValidation.cvv.html">cvv</a></li><li><a href="koValidation.endmonth.html">endmonth</a></li><li><a href="koValidation.endyear.html">endyear</a></li><li><a href="koValidation.importFileName.html">importFileName</a></li><li><a href="koValidation.laterDate.html">laterDate</a></li><li><a href="koValidation.match.html">match</a></li><li><a href="koValidation.mediaZipFileName.html">mediaZipFileName</a></li><li><a href="koValidation.number.html">number</a></li><li><a href="koValidation.observablePattern.html">observablePattern</a></li><li><a href="koValidation.password.html">password</a></li><li><a href="koValidation.price.html">price</a></li><li><a href="koValidation.propertyIdAlreadyInUse.html">propertyIdAlreadyInUse</a></li><li><a href="koValidation.propertyNameAlreadyInUse.html">propertyNameAlreadyInUse</a></li><li><a href="koValidation.restrictSlashCharacters.html">restrictSlashCharacters</a></li><li><a href="koValidation.startmonth.html">startmonth</a></li><li><a href="koValidation.startyear.html">startyear</a></li><li><a href="koValidation.uniqueTrimmed.html">uniqueTrimmed</a></li><li><a href="koValidation.uniqueTrimmedCaseInsensitive.html">uniqueTrimmedCaseInsensitive</a></li><li><a href="koValidation.url.html">url</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.addTemplate.html">addTemplate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDate.html">ccDate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDateTime.html">ccDateTime</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccNumber.html">ccNumber</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.disabled.html">disabled</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.element.html">element</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.embeddedAssistance.html">embeddedAssistance</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.inTabFlow.html">inTabFlow</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.setContextVariable.html">setContextVariable</a></li><li><a href="NavStateViewModel.html">NavStateViewModel</a></li><li><a href="OrderHistoryViewModel.html">OrderHistoryViewModel</a></li><li><a href="OrderViewModel.html">OrderViewModel</a></li><li><a href="ParentOrganisation.html">ParentOrganisation</a></li><li><a href="ProductListingSearchViewModel.html">ProductListingSearchViewModel</a></li><li><a href="ProductListingViewModel.html">ProductListingViewModel</a></li><li><a href="ProductViewModel.html">ProductViewModel</a></li><li><a href="PubSub.topicNames.html">topicNames</a></li><li><a href="resetCVV.html">resetCVV</a></li><li><a href="resetPaymentDetails.html">resetPaymentDetails</a></li><li><a href="SearchRestClient.html">SearchRestClient</a></li><li><a href="UserViewModel.html">UserViewModel</a></li><li><a href="WidgetViewModel.html">WidgetViewModel</a></li><li><a href="WishlistContentViewModel.html">WishlistContentViewModel</a></li></ul><h3>Namespaces</h3><ul><li><a href="ko.bindingHandlers.html">bindingHandlers</a></li><li><a href="ko.extenders.html">extenders</a></li><li><a href="koValidation.html">koValidation</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CCEETagProcessor">CCEETagProcessor</a></li><li><a href="global.html#isValidDeterminewhetherornotthepaymentdetailsobjectisvalidbasedonthevalidityofitscomponentparts.Thiswillnotcauseerrormessagestobedisplayedforanyobservablevaluesthatareunchangedandhaveneverreceivedfocusontherelatedformfield(s).">isValid
+Determine whether or not the payment details object is valid
+based on the validity of its component parts. This will not
+cause error messages to be displayed for any observable values
+that are unchanged and have never received focus on the 
+related form field(s).</a></li><li><a href="global.html#validatePaymentDetailsForceallrelevantmemberobservablestoperformtheirvalidationnow&displaytheerrors(ifany)">validatePaymentDetails
+Force all relevant member observables to perform their
+validation now & display the errors (if any)</a></li></ul>
+</nav>
+
+<br clear="both">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0</a> on Mon Oct 10 2016 10:49:02 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

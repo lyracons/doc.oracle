@@ -1,0 +1,2107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Dynamo/Client/Store/web/store.war/shared/js/ccLibs/site-studio-ko-extensions.js</title>
+    
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    
+    <h1 class="page-title">Source: Dynamo/Client/Store/web/store.war/shared/js/ccLibs/site-studio-ko-extensions.js</h1>
+    
+    
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source"><code>/**
+ * @fileoverview Includes knockout extensions that contain logic specific
+ * to admin functionality. Any extensions that require knowledge
+ * about admin functionality should go here. Other extensions
+ * live under store-ko-extensions.js, cc-ko-extensions.js &amp; ko-extensions.js
+ *
+ *
+ */
+/*global $ */
+define('siteStudioKoExtensions',
+      ['knockout', 'jqueryui','fontControls','fontViewModel','cartPickerControls', 'defaultPageSelectorSettings',
+       'targetSelectorSettings', 'ccLogger', 'CCi18n', 'ccConstants', 'imageConfigViewModel', 'paddingConfigViewModel',
+       'richTextConfigViewModel', 'ace/ace', 'admin/util/utils', 'slickGrid', 'pubsub', 'metaTagControls',
+       'admin/controls/mediapickercontrol', 'admin/catalog/catalog-item-lookup-helper', 'viewportPickerSettings'],
+      function (ko, jqueryui, FontControlSettingsViewModel, FontViewModel, CartPickerControlSettingsViewModel,
+                DefaultPageSelectorSettingsViewModel, TargetSelectorSettingsViewModel, CCLogger, CCi18n, CCConstants,
+                ImageConfigViewModel, PaddingConfigViewModel, RichTextConfigViewModel, ace, Utils, slickGrid, PubSub,
+                MetaTagsControlSettingsViewModel, MediaPickerControl, CatalogItemLookupHelper, ViewportPickerSettingsViewModel) {
+
+  "use strict";
+
+  /**
+   * The buttonPicker binding provides a way to easily display a
+   * complete set of button controls.
+   * &lt;p>
+   * Renders the 'buttonSettings' template within the current element.
+   * &lt;p>
+   * &lt;h2>Parameters:&lt;/h2>
+   * &lt;ul>
+   *   &lt;li>&lt;code>{Observable ButtonViewModel} value&lt;/code> - The button property.&lt;/li>
+   * &lt;/ul>
+   *
+   * @private
+   * @class buttonPicker provides a way to display a set of button controls.
+   * @see ButtonViewModel
+   * @example
+   * &amp;lt;div data-bind="buttonPicker: primaryButton">&amp;lt;/div>
+   */
+  ko.bindingHandlers.buttonPicker = {
+    /**
+     * The logic runs once to initialize the binding for this element. Indicates
+     * that this binding controls decendantBindings.
+     * @private
+     * @param {Object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns all of
+     * the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current context for
+     * this binding.
+     * @param {object} bindingContext The binding hierarchy for the current
+     * context.
+     */
+    init: function(element, valueAccessor, allBindingsAccessor, viewModel,
+      bindingContext) {
+      return {'controlsDescendantBindings' : true};
+    },
+
+    /**
+     * Update is run whenever an observable in the binding's properties changes.
+     * Updates the child template to render the button controls.
+     * @private
+     * @param {object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns all of
+     * the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current context for
+     * this binding.
+     * @param {object} bindingContext The binding hierarchy for the current
+     * context.
+     */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel,
+      bindingContext) {
+      var buttonControl = valueAccessor();
+
+      // Setup template values which mimic the binding of a template.
+      var templateValues = {};
+      templateValues.name = 'buttonSettings';
+      templateValues.data = buttonControl;
+      templateValues.templateUrl = CCConstants.DESIGN_STUDIO_TEMPLATES;
+      templateValues.afterRender = buttonControl.initializePreviews;
+
+      //Render the template
+      ko.bindingHandlers.template.update(element,
+        function() {
+          return templateValues;
+        }, allBindingsAccessor, buttonControl, bindingContext
+      );
+    }
+  };
+
+  /**
+   * The fontPicker binding provides a way to easily display a complete
+   * set of font controls.
+   * &lt;p>
+   * Renders the 'fontSettings' template within the current element.
+   * &lt;p>
+   * &lt;h2>Parameters:&lt;/h2>
+   * &lt;ul>
+   *   &lt;li>&lt;code>{Observable FontControlSettingsViewModel} value&lt;/code> - The font property.&lt;/li>
+   * &lt;/ul>
+   *
+   * @private
+   * @class fontPicker provides a way to display a set of font controls.
+   * @see FontControlSettingsViewModel
+   * @example
+   * &amp;lt;div data-bind="fontPicker: paragraphFontObj">&amp;lt;/div>
+   */
+  ko.bindingHandlers.fontPicker = {
+    /**
+     * Create a global counter for guarantee id uniqueness.
+     */
+    idCounter : 1,
+
+    /**
+     * The logic runs once to initialize the binding for this element.
+     * Renders the fontSettings template inside the current element.
+     * @private
+     * @param {Object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var values = ko.utils.unwrapObservable(valueAccessor()),
+          templateValues, font, parentFont, fontControl, parentFontControl,
+          baseFont, baseFontControl, parentIsBase,
+          id, preview, previewText, showInline, showPreviewLabel,
+          showAlignmentButtons, showFontSpacing, showFontSettings, disableControl;
+
+      // Values must have a font and an id
+      if(!values.font || !values.id) {
+        return;
+      }
+
+      var additionalFonts = ko.utils.unwrapObservable(values.additionalFonts) || [];
+
+      font = values.font;
+      if (typeof values.id === "function" &amp;&amp; !ko.isObservable(values.id)) {
+        id = values.id();
+      } else {
+        id = ko.utils.unwrapObservable(values.id);
+      }	
+
+      preview = values.preview || false;
+      parentFont = values.parentFont || null;
+      baseFont = values.baseFont || null;
+      previewText = values.previewText || null;
+
+      parentIsBase = true;
+
+      if (typeof values.showFontSettings === "undefined"){
+        showFontSettings = true;
+      } else {
+        showFontSettings = values.showFontSettings;
+      }
+
+       if (typeof values.showPreviewLabel === "undefined"){
+        showPreviewLabel = true;
+      } else {
+        showPreviewLabel = values.showPreviewLabel;
+      }
+
+
+      if (typeof values.disableControl === "undefined"){
+        disableControl = false;
+      } else {
+        disableControl = values.disableControl;
+      }
+
+      showInline = ko.utils.unwrapObservable(values.inline) || false;
+
+      // check to see if there are showAlignment &amp; showFontSpacing flags in the
+      // values if not use the show inline flag to determine the value
+      // if we are not inline then set the show the alignment and fontspacing
+      // to true controls
+      showAlignmentButtons = values.showAlignment || (!showInline);
+      showFontSpacing = values.showFontSpacing || (!showInline);
+
+      // For accessibility, we try to ensure that the ids are unique cross page.
+      // To do so, we look at the parent div id (if any) and use that to qualify the ids.
+      var uniqueid = ko.bindingHandlers.fontPicker.idCounter++;
+
+      // Create the various view models ensuring that they have a unique id.
+      if(baseFont &amp;&amp; parentFont) {
+
+        if(ko.utils.unwrapObservable(baseFont) !== ko.utils.unwrapObservable(parentFont)) {
+          parentIsBase = false;
+          baseFontControl = new FontControlSettingsViewModel(uniqueid + '-base', baseFont, true, null, true);
+        }
+      }
+
+      if(parentFont &amp;&amp; (ko.utils.unwrapObservable(parentFont) !== null)) {
+
+        if(parentIsBase) {
+          parentFontControl = new FontControlSettingsViewModel(uniqueid + '-parent', parentFont, parentIsBase, null, true);
+        } else {
+          parentFontControl = new FontControlSettingsViewModel(uniqueid + '-parent', parentFont, parentIsBase, baseFontControl, true);
+        }
+
+        fontControl = new FontControlSettingsViewModel(uniqueid, font, false, parentFontControl, true);
+
+      } else {
+        fontControl = new FontControlSettingsViewModel(uniqueid, font, true, null, true);
+      }
+
+      fontControl.showPreviewWindow = ko.observable(preview);
+      fontControl.disableControl(disableControl);
+      fontControl.showAlignmentButtons = ko.observable(showAlignmentButtons);
+      fontControl.showFontSpacing = ko.observable(showFontSpacing);
+      fontControl.showPreviewLabel = ko.observable(showPreviewLabel);
+
+      if(previewText) {
+        fontControl.previewText = previewText;
+      }
+
+      fontControl.showFontSettings = ko.observable(showFontSettings);
+
+      var options = allBindingsAccessor().fontPickerOptions|| {};
+
+      //add the font control to the
+      if (typeof valueAccessor().allFontControls !== 'undefined' &amp;&amp; valueAccessor().allFontControls != null) {
+
+    	  valueAccessor().allFontControls[id] = fontControl;
+      } else {
+    	  valueAccessor().allFontControls = new Object();
+    	  valueAccessor().allFontControls[id] = fontControl;
+
+      }
+
+      // Unsubscribe to isValidFont changes on the font
+      ko.utils.domNodeDisposal.addDisposeCallback(element, function() {
+        fontControl.isValidFontSubscription.dispose();
+      });
+
+      //Setup template values which mimic the binding of a template.
+      templateValues = {};
+      templateValues.name = 'fontSettings';
+      templateValues.data = fontControl;
+      templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+      //Render the template
+      return ko.bindingHandlers.template.init(element, function() { return templateValues;}, allBindingsAccessor, fontControl, bindingContext);;
+    },
+
+    /**
+     * Update is run whenever an observable in the binding's
+     * properties changes.
+     * Updates the 'fontSettings' child template.
+     * @private
+     * @param {object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var values = ko.utils.unwrapObservable(valueAccessor()),
+        templateValues, font, fontControl, id;
+
+      // Values must have a font and an id
+      if(!values.font || !values.id) {
+        return;
+      }
+
+      font = values.font;
+      if (typeof values.id === "function" &amp;&amp; !ko.isObservable(values.id)) {
+        id = values.id();
+      } else {
+        id = ko.utils.unwrapObservable(values.id);
+      }	
+
+
+      //get the unique font control from the view model
+      fontControl = valueAccessor().allFontControls[id];
+
+      var additionalFonts = ko.utils.unwrapObservable(values.additionalFonts) || [];
+      // add in any additional fonts
+
+      if (additionalFonts &amp;&amp; typeof additionalFonts.length == "number"){
+
+        // Get current font family
+        var currentFontFamily = fontControl.font().fontFamily();
+
+        // Add any missing fonts to the fonts array
+        for (var i = 0; i &lt; additionalFonts.length; i++) {
+
+          if (fontControl.additionalFontsArray.indexOf(additionalFonts[i]) &lt; 0) {
+            fontControl.additionalFontsArray.push(additionalFonts[i]);
+          }
+        }
+
+        // Remove any redundant fonts from the fonts array
+        for (var j = 0; j &lt; fontControl.additionalFontsArray().length; j++) {
+          if (additionalFonts.indexOf(fontControl.additionalFontsArray()[j]) &lt; 0) {
+            fontControl.additionalFontsArray.remove(fontControl.additionalFontsArray()[j]);
+            j--;
+          }
+        }
+
+        // After updating the fontcontrol, ensure that the currently selected font is
+        // still valid- if not, revert to the default @sans family
+
+        var selectedFontIsValid = function () {
+          for (var k = 0, len = fontControl.allFontsList().length; k &lt; len; ++k) {
+            var family = fontControl.allFontsList()[k].fontFamily();
+            if (typeof(family) === 'string') {
+              if (currentFontFamily === family) {
+                return true;
+              }
+            } else if (typeof(family) === 'function') {
+              if (currentFontFamily === family()) {
+                return true;
+              }
+            }
+          }
+          return false;
+        };
+
+        if (!selectedFontIsValid()) {
+          fontControl.selectedFontFamily('@sansFontFamily');
+        }
+
+      }
+
+      //Setup template values which mimic the binding of a template.
+      templateValues = {};
+      templateValues.name = 'fontSettings';
+      templateValues.data = fontControl;
+      templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+      //Render the template
+      ko.bindingHandlers.template.update(element,
+         function() { return templateValues;},
+         allBindingsAccessor, fontControl, bindingContext);
+    }
+  };
+
+
+  /**
+   * The textPreview binding provides a way to preview text items with a given font style.
+   * &lt;p>
+   * &lt;h2>Parameters:&lt;/h2>
+   * &lt;ul>
+   *   &lt;li>&lt;code>{Observable String[]} previewItems&lt;/code> - The list of text items to be previewed.&lt;/li>
+   *   &lt;li>&lt;code>{Observable FontViewModel} baseFont&lt;/code> - The font to be used to preview the items.&lt;/li>
+   * &lt;/ul>
+   *
+   * @private
+   * @name ko.bindingHandlers.textPreview
+   * @class textPreview provides a way to preview text with a given font/style.
+   * @example
+   * &amp;lt;div class="well" data-bind="textPreview: { previewItems: $previewItems, baseFont: $baseFont },
+   *   style: { backgroundColor: $sitePageBackgroundColor }">&amp;lt;/div>
+   */
+  ko.bindingHandlers.textPreview = {
+    /**
+     * The logic runs once to initialize the binding for this element.
+     * Indicates that this binding controls descendant bindings.
+     * @private
+     * @param {Object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      return {'controlsDescendantBindings' : true};
+    },
+
+    /**
+     * Update is run whenever an observable in the binding's properties changes.
+     * Recalculates the CSS styles and applies the 'textPreview' template to this element.
+     * @private
+     * @param {object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var values = ko.utils.unwrapObservable(valueAccessor()),
+          templateValues, templateData, i, previewData, baseFont, baseStyles,
+          inheritStyles, updateStyles;
+
+      if(!values || !values.previewItems || !values.baseFont) {
+        return;
+      }
+
+      if(ko.isObservable(values.previewItems)) {
+        previewData = values.previewItems;
+      } else {
+        previewData = ko.observable(values.previewItems);
+      }
+
+
+      baseFont =  ko.isObservable(values.baseFont) ? values.baseFont : ko.observable(values.baseFont);
+      baseStyles = baseFont().cssStyling;
+
+      /**
+       * Replaces any 'inherit' values in the childStyles
+       * with the value from the parentStyles
+       */
+      inheritStyles = function(childStyles, parentStyles) {
+
+        if(!childStyles) {
+          if(!parentStyles) {
+            return "";
+          }
+          return parentStyles;
+        }
+        if(!parentStyles) {
+          return childStyles;
+        }
+        if((childStyles.indexOf(CCConstants.FONT_ATTRIBUTE_INHERIT) === -1)
+          &amp;&amp; (childStyles.indexOf(CCConstants.FONT_ATTRIBUTE_REM) === -1)) {
+          return childStyles;
+        }
+
+        var childStylesArray = childStyles.split(';');
+        var parentStylesArray = parentStyles.split(';');
+        var key, value, currentStyle, returnStyles ="";
+
+        childStylesArray.forEach( function(childElement) {
+
+          var keyValue = childElement.split(':');
+
+          if(keyValue.length === 2) {
+            key = keyValue[0].trim().toLowerCase();
+            value = keyValue[1].trim().toLowerCase();
+
+            if(value === CCConstants.FONT_ATTRIBUTE_INHERIT) {
+
+              parentStylesArray.forEach( function(parentElement) {
+
+                var parentKeyValue = parentElement.split(':');
+                var parentKey;
+
+                if(parentKeyValue.length === 2) {
+                  parentKey = parentKeyValue[0].trim();
+
+                  if(parentKey.toLowerCase() === key.toLowerCase()) {
+                    value = parentKeyValue[1];
+                  }
+                }
+              });
+            }
+
+            var index = value.indexOf(CCConstants.FONT_ATTRIBUTE_REM);
+
+            if(index !== -1) {
+              // remove 'rem'
+              var remValue = value.substring(0,index);
+
+              value = (baseFont().fontSize() * remValue) + CCConstants.FONT_ATTRIBUTE_PIXELS;
+            }
+
+            returnStyles += key +": " + value +";\n";
+          }
+
+        });
+
+        return returnStyles;
+      };
+
+
+      updateStyles = function() {
+        var returnStyles = inheritStyles(this.font().cssStyling(), this.parentFont().cssStyling());
+        returnStyles = inheritStyles(returnStyles, baseStyles());
+
+        // If we are a block level element with an associated font,
+        // check for padding and it to the wrapper tag as an inline style.
+        if( typeof this.paddingConfig === 'function' &amp;&amp; this.paddingConfig() &amp;&amp; !this.inline()) {
+          returnStyles += this.paddingConfig().styles();
+        }
+        return returnStyles;
+      };
+
+      for(i=0; i&lt;previewData().length; i++) {
+
+        if(!previewData()[i].previewText()) {
+          previewData()[i].previewText('');
+        }
+
+        if(!previewData()[i].name || !ko.isObservable(previewData()[i].name)) {
+          previewData()[i].name = ko.observable('');
+        }
+
+        if(!previewData()[i].hasOwnProperty("inline")) {
+          previewData()[i].inline = false;
+        }
+
+        if(!previewData()[i].parentFont || !previewData()[i].parentFont()) {
+          previewData()[i].parentFont = baseFont;
+        }
+
+        if(previewData()[i].font() &amp;&amp; previewData()[i].parentFont()) {
+          previewData()[i].previewStyles = ko.computed(updateStyles, previewData()[i]);
+        } else {
+          previewData()[i].previewStyles = "";
+        }
+
+      }
+
+      templateData = {previewData: previewData,
+                      CCConstants: CCConstants,
+                      baseFont: baseFont};
+
+      //Setup template values which mimic the binding of a template.
+      templateValues = {};
+      templateValues.name = 'textPreview';
+      templateValues.data = templateData;
+      templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+      //Render the template
+      ko.bindingHandlers.template.update(element,
+         function() { return templateValues;},
+         allBindingsAccessor, templateData, bindingContext);
+    }
+  };
+
+  /**
+   * The genericImagePreview binding provides a way to preview image elements.
+   * &lt;p>
+   * &lt;h2>Parameters:&lt;/h2>
+   * &lt;ul>
+   *   &lt;li>&lt;code>{Observable String[]} previewItems&lt;/code> - The list of text items to be previewed.&lt;/li>
+   *   &lt;li>&lt;code>{Observable FontViewModel} baseFont&lt;/code> - The font to be used to preview the items.&lt;/li>
+   * &lt;/ul>
+   *
+   * @private
+   * @name ko.bindingHandlers.imagePreview
+   * @class imagePreview provides a way to preview image elements.
+   * @example
+   * &amp;lt;div class="well" data-bind="textPreview: { previewItems: $previewItems, baseFont: $baseFont },
+   *   style: { backgroundColor: $sitePageBackgroundColor }">&amp;lt;/div>
+   */
+  ko.bindingHandlers.imagePreview = {
+    /**
+     * The logic runs once to initialize the binding for this element.
+     * Indicates that this binding controls descendant bindings.
+     * @private
+     * @param {Object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      return {'controlsDescendantBindings' : true};
+    },
+
+    /**
+     * Update is run whenever an observable in the binding's properties changes.
+     * Recalculates the CSS styles and applies the 'imagePreview' template to this element.
+     * @private
+     * @param {object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var values = ko.utils.unwrapObservable(valueAccessor()),
+        templateValues, templateData, i, previewData, imageConfig, paddingConfig, borderConfig, horizontalAlignmentConfig;
+
+      if (!values || !values.imageConfig || !values.paddingConfig) {
+        return;
+      }
+
+      // Image config
+      if (ko.isObservable(values.imageConfig)) {
+        imageConfig = values.imageConfig;
+      } else {
+        imageConfig = ko.observable(values.imageConfig);
+      }
+
+      // Padding config
+      if (ko.isObservable(values.paddingConfig)) {
+        paddingConfig = values.paddingConfig;
+      } else {
+        paddingConfig = ko.observable(values.paddingConfig);
+      }
+
+      // Border config
+      if (ko.isObservable(values.borderConfig)) {
+        borderConfig = values.borderConfig;
+      } else {
+        borderConfig = ko.observable(values.borderConfig);
+      }
+
+      // Horizontal alignment config
+      if (ko.isObservable(values.horizontalAlignmentConfig)) {
+        horizontalAlignmentConfig = values.horizontalAlignmentConfig;
+      } else {
+        horizontalAlignmentConfig = ko.observable(values.horizontalAlignmentConfig);
+      }
+
+      templateData = {imageConfig: imageConfig, paddingConfig: paddingConfig,
+        borderConfig: borderConfig, horizontalAlignmentConfig: horizontalAlignmentConfig,
+        CCConstants: CCConstants};
+
+      //Setup template values which mimic the binding of a template.
+      templateValues = {};
+      templateValues.name = 'imagePreview';
+      templateValues.data = templateData;
+      templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_ELEMENT_TEMPLATES;
+
+      //Render the template
+      ko.bindingHandlers.template.update(element,
+        function() { return templateValues;},
+        allBindingsAccessor, templateData, bindingContext);
+    }
+  };
+
+  /**
+   * The genericImagePreview binding provides a way to preview image elements.
+   * &lt;p>
+   * &lt;h2>Parameters:&lt;/h2>
+   * &lt;ul>
+   *   &lt;li>&lt;code>{Observable String[]} previewItems&lt;/code> - The list of text items to be previewed.&lt;/li>
+   *   &lt;li>&lt;code>{Observable FontViewModel} baseFont&lt;/code> - The font to be used to preview the items.&lt;/li>
+   * &lt;/ul>
+   *
+   * @private
+   * @name ko.bindingHandlers.imagePreview
+   * @class imagePreview provides a way to preview image elements.
+   * @example
+   * &amp;lt;div class="well" data-bind="textPreview: { previewItems: $previewItems, baseFont: $baseFont },
+   *   style: { backgroundColor: $sitePageBackgroundColor }">&amp;lt;/div>
+   */
+  ko.bindingHandlers.imagePreview = {
+    /**
+     * The logic runs once to initialize the binding for this element.
+     * Indicates that this binding controls descendant bindings.
+     * @private
+     * @param {Object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      return {'controlsDescendantBindings' : true};
+    },
+
+    /**
+     * Update is run whenever an observable in the binding's properties changes.
+     * Recalculates the CSS styles and applies the 'imagePreview' template to this element.
+     * @private
+     * @param {object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var values = ko.utils.unwrapObservable(valueAccessor()),
+        templateValues, templateData, i, previewData, imageConfig, paddingConfig, borderConfig, horizontalAlignmentConfig;
+
+      if (!values || !values.imageConfig || !values.paddingConfig) {
+        return;
+      }
+
+      // Image config
+      if (ko.isObservable(values.imageConfig)) {
+        imageConfig = values.imageConfig;
+      } else {
+        imageConfig = ko.observable(values.imageConfig);
+      }
+
+      // Padding config
+      if (ko.isObservable(values.paddingConfig)) {
+        paddingConfig = values.paddingConfig;
+      } else {
+        paddingConfig = ko.observable(values.paddingConfig);
+      }
+
+      // Border config
+      if (ko.isObservable(values.borderConfig)) {
+        borderConfig = values.borderConfig;
+      } else {
+        borderConfig = ko.observable(values.borderConfig);
+      }
+
+      // Horizontal alignment config
+      if (ko.isObservable(values.horizontalAlignmentConfig)) {
+        horizontalAlignmentConfig = values.horizontalAlignmentConfig;
+      } else {
+        horizontalAlignmentConfig = ko.observable(values.horizontalAlignmentConfig);
+      }
+
+      templateData = {imageConfig: imageConfig, paddingConfig: paddingConfig,
+        borderConfig: borderConfig, horizontalAlignmentConfig: horizontalAlignmentConfig,
+        CCConstants: CCConstants};
+
+      //Setup template values which mimic the binding of a template.
+      templateValues = {};
+      templateValues.name = 'imagePreview';
+      templateValues.data = templateData;
+      templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_ELEMENT_TEMPLATES;
+
+      //Render the template
+      ko.bindingHandlers.template.update(element,
+        function() { return templateValues;},
+        allBindingsAccessor, templateData, bindingContext);
+    }
+  };
+
+  /**
+   * The cartPicker binding provides a set of 5 cart 'slots', containing product ID and quantity,
+   * to preview shopping cart functionality in Design Studio, as Layouts are being configured.
+   * &lt;p>
+   * &lt;h2>Parameters:&lt;/h2>
+   * The parameters specified in the binding declaration will be passed through to the CartPickerControlSettingsViewModel.
+   * &lt;ul>
+   *   &lt;li>&lt;code>{Observable Object[]} property&lt;/code> - The list of cart items. These should be objects in the
+   *   form:
+   *   &lt;pre>{ 'productId':'prod10001', 'quantity': 1}&lt;/pre>
+   *   &lt;/li>
+   *   &lt;li>&lt;code>{Observable String} helpText&lt;/code> - The help text to be displayed alongside the cart controls..&lt;/li>
+   * &lt;/ul>
+   *
+   * @private
+   * @class cartPicker lets you preview shopping cart functionality within design studio.
+   * @example
+   * &amp;lt;div data-bind='cartPicker: {
+   *   property: $parent.editItem()[$data.id], required: $data.required,
+   *   helpText: $parent.CCi18n.t("ns.design:resources."+$data.id+"HelpText", {defaultValue: " "})'>
+   * &amp;lt;/div>
+   * @see CartPickerControlSettingsViewModel
+   */
+  ko.bindingHandlers.cartPicker = {
+    /**
+     * The logic runs once to initialize the binding for this element.
+     * Creates a CartPickerControlSettingsViewModel with the options supplied.
+     * Indicates that this binding controls descendant bindings.
+     * @private
+     * @param {Object} element The DOM element attached to this binding
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+	  init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+		  var values = ko.utils.unwrapObservable(valueAccessor()),
+	      templateValues, cartPicker, key, cartControl,
+	      id, preview, previewText;
+
+	      //cartPicker = values.font;
+	      id = ko.utils.unwrapObservable(values.id);
+
+	      //Setup template values which mimic the binding of a template.
+	      templateValues = {};
+	      templateValues.name = 'cartPicker';
+
+	      templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+	      var idBase = $(element).closest('form').attr('id') + '-' + templateValues.name + '-' + (id ? id + '-' : '');
+
+	      values.property.formId = idBase + '-productId-0';
+
+	      cartControl = new CartPickerControlSettingsViewModel(idBase, values);
+	      templateValues.data = cartControl;
+
+	      // Set cart control into view model
+	      viewModel.cartControl = cartControl;
+
+	      //Render the template
+	      ko.bindingHandlers.template.update(element,
+	         function() { return templateValues;},
+	         allBindingsAccessor, cartControl, bindingContext);
+
+	      return {'controlsDescendantBindings' : true};
+	    },
+
+	    /**
+	     * Update is run whenever an observable in the binding's
+	     * properties changes.
+	     * Updates the cart items.
+	     * @private
+	     * @param {object} element The DOM element attached to this binding.
+	     * @param {function(): object} valueAccessor A function that returns
+	     * all of the values associated with this binding.
+	     * @param {function(): object} allBindingsAccessor Object containing
+	     * information about other bindings on the same HTML element.
+	     * @param {object} viewModel The viewModel that is the current
+	     * context for this binding.
+	     * @param {object} bindingContext The binding hierarchy for
+	     * the current context.
+	     */
+	    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+	      var values = ko.utils.unwrapObservable(valueAccessor());
+
+	      if ((viewModel.cartControl)) {
+	        // if there are values update the cart.
+	        if ((values.property) &amp;&amp; (typeof values.property() !== "undefined")){
+	          viewModel.cartControl.updateCartItems(values.property());
+	        }
+	        // otherwise, initialize with empty values
+	        else {
+	          viewModel.cartControl.initializeCartItems();
+	        }
+	      }
+	    }
+	  };
+
+  /**
+   * @private
+   * @class Used by the layout settings property editor for adding the default page selector.
+   * @example
+   * &amp;lt;div data-bind='defaultPageSelector:
+   *   {if: $parent.item() || $data.writable, id: $data.id,
+   *   writable: $data.writable, type: $data.type,
+   *   label: $parent.CCi18n.t("ns.design:resources."+$data.id), selectLabel: $parent.CCi18n.t("ns.common:resources.selectText"),
+   *   property: $parent.editItem()[$data.id], required: $data.required,
+   *   propertyValues: $data.values, propertyValuesName: "displayName",
+   *   propertyValuesValue: "id", helpText: $parent.CCi18n.t("ns.design:resources."+$data.id+"HelpText", {defaultValue: " "}),
+   *   noResultsFound: $parent.CCi18n.t("ns.common:resources.noResultsFoundText"),
+   *   NaNMessage: $parent.CCi18n.t("ns.common:resources.nanErrorText", {label: $data.label}),
+   *   requiredMissingMessage: $parent.CCi18n.t("ns.common:resources.requiredFieldValidation", {label: $data.label})}'>
+   * &amp;lt;/div>
+   * @see also defaultPageSelector.template also, which is the template rendered by this binding
+   */
+  ko.bindingHandlers.defaultPageSelector = {
+
+    /**
+     * The logic runs once to initialize the binding for this element.
+     * Indicates that this binding controls descendant bindings.
+     * @private
+     * @param {Object} element The DOM element attached to this binding
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+      var values = ko.utils.unwrapObservable(valueAccessor());
+
+      return {'controlsDescendantBindings' : true};
+    },
+    /**
+     * Update is run whenever an observable in the binding's
+     * properties changes.
+     * Updates the child template.
+     * @private
+     * @param {object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+      var values = ko.utils.unwrapObservable(valueAccessor()),
+      templateValues, id;
+
+      id = ko.utils.unwrapObservable(values.id);
+
+      //Setup template values which mimic the binding of a template.
+      templateValues = {};
+      templateValues.name = 'defaultPageSelector';
+
+      templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+      var idBase = $(element).closest('form').attr('id') + '-' + templateValues.name + '-' + (id ? id + '-' : '');
+
+      values.property.formId = idBase + '-productId-0';
+      var dataModel = new DefaultPageSelectorSettingsViewModel(idBase, values, element);
+      templateValues.data = dataModel;
+
+      //Render the template
+      ko.bindingHandlers.template.update(element,
+         function() { return templateValues;},
+         allBindingsAccessor, dataModel, bindingContext);
+    }
+  };
+
+  /**
+   * @private
+   * @class Used by the layout settings property editor for adding the viewport picker.
+   * @example
+   * &amp;lt;div data-bind='viewportPicker:
+   *   {if: $parent.item() || $data.writable, id: $data.id,
+   *   writable: $data.writable, type: $data.type,
+   *   label: $parent.CCi18n.t("ns.design:resources."+$data.id), selectLabel: $parent.CCi18n.t("ns.common:resources.selectText"),
+   *   property: $parent.editItem()[$data.id], required: $data.required,
+   *   propertyValues: $data.values, propertyValuesName: "displayName",
+   *   propertyValuesValue: "id", helpText: $parent.CCi18n.t("ns.design:resources."+$data.id+"HelpText", {defaultValue: " "})}'>
+   * &amp;lt;/div>
+   * @see also viewportPicker.template, which is the template rendered by this binding
+   */
+  ko.bindingHandlers.viewportPicker = {
+
+      /**
+       * The logic runs once to initialize the binding for this element.
+       * Indicates that this binding controls descendant bindings.
+       * @private
+       * @param {Object} element The DOM element attached to this binding
+       * @param {function(): object} valueAccessor A function that returns
+       * all of the values associated with this binding.
+       * @param {function(): object} allBindingsAccessor Object containing
+       * information about other bindings on the same HTML element.
+       * @param {object} viewModel The viewModel that is the current
+       * context for this binding.
+       * @param {object} bindingContext The binding hierarchy for
+       * the current context.
+       */
+      init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+        var values = ko.utils.unwrapObservable(valueAccessor());
+
+        return {'controlsDescendantBindings' : true};
+      },
+      /**
+       * Update is run whenever an observable in the binding's
+       * properties changes.
+       * Updates the child template.
+       * @private
+       * @param {object} element The DOM element attached to this binding.
+       * @param {function(): object} valueAccessor A function that returns
+       * all of the values associated with this binding.
+       * @param {function(): object} allBindingsAccessor Object containing
+       * information about other bindings on the same HTML element.
+       * @param {object} viewModel The viewModel that is the current
+       * context for this binding.
+       * @param {object} bindingContext The binding hierarchy for
+       * the current context.
+       */
+      update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+        var values = ko.utils.unwrapObservable(valueAccessor()),
+        templateValues, id;
+
+        id = ko.utils.unwrapObservable(values.id);
+
+        //Setup template values which mimic the binding of a template.
+        templateValues = {};
+        templateValues.name = 'viewportPicker';
+
+        templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_ELEMENT_TEMPLATES;
+
+        var idBase = $(element).closest('form').attr('id') + '-' + templateValues.name + '-' + (id ? id + '-' : '');
+
+        values.property.formId = idBase + '-productId-0';
+
+        var dataModel = new ViewportPickerSettingsViewModel(idBase, values, element);
+        templateValues.data = dataModel;
+
+        //Render the template
+        ko.bindingHandlers.template.update(element,
+           function() { return templateValues;},
+           allBindingsAccessor, dataModel, bindingContext);
+      }
+    };
+
+    ko.bindingHandlers.targetSelector = {
+      init: function() {
+        return {'controlsDescendantBindings' : true};
+      },
+      update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+        var values = ko.utils.unwrapObservable(valueAccessor()), templateValues, id;
+        id = ko.utils.unwrapObservable(values.id);
+
+        templateValues = {};
+        templateValues.name = 'targetSelector';
+        templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+        var idBase = $(element).closest('form').attr('id') + '-' + templateValues.name + '-' + (id ? id + '-' : '');
+        values.property.formId = idBase + '-target-0';
+        var dataModel = new TargetSelectorSettingsViewModel(idBase, values, element);
+        templateValues.data = dataModel;
+
+        ko.bindingHandlers.template.update(element,
+        function() { return templateValues;},
+        allBindingsAccessor, dataModel, bindingContext);
+      }
+    };
+
+  /**
+   * Used by the layout settings property editor for adding additional meta tags.
+   *
+   * @private
+   * @class metaTags lets you define additional meta tags.
+   * @example
+   * &amp;lt;div data-bind='metaTags: {
+   *   id: $data.id, writable: $data.writable, type: $data.type,
+   *   selectLabel: $parent.CCi18n.t("ns.common:resources.selectText"),
+   *   property: $parent.editItem()[$data.id], required: $data.required,
+   *   attributeNameEnumData: $data.attributeNameEnumData,
+   *   NaNMessage: $parent.CCi18n.t("ns.common:resources.nanErrorText", {label: $data.label}),
+   *   requiredMissingMessage: $parent.CCi18n.t("ns.common:resources.requiredFieldValidation", {label: $data.label})}'>
+   * &amp;lt;/div>
+   * @see metaTags.template which is the template rendered by this binding
+   */
+  ko.bindingHandlers.metaTags = {
+    /**
+     * The logic runs once to initialize the binding for this element.
+     * Creates a MetaTagsControlSettingsViewModel and renders the 'metaTags' template inside this element.
+     * Indicates that this binding controls descendant bindings.
+     * @private
+     * @param {Object} element The DOM element attached to this binding
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+      var values = ko.utils.unwrapObservable(valueAccessor()),
+        templateValues, metaTags, metaTagsControl, id;
+
+      id = ko.utils.unwrapObservable(values.id);
+
+      //Setup template values which mimic the binding of a template.
+      templateValues = {};
+      templateValues.name = 'metaTags';
+
+      templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+      var idBase = $(element).closest('form').attr('id') + '-' + templateValues.name + '-' + (id ? id + '-' : '');
+
+      values.property.formId = idBase + '-metaTagId-0';
+
+      metaTagsControl = new MetaTagsControlSettingsViewModel(idBase, values);
+      templateValues.data = metaTagsControl;
+
+      // Set meta tag control into view model
+      // Need this for update method and also for
+      // the Add New Meta Tag Modal
+      viewModel.metaTagsControl = metaTagsControl;
+
+      //Render the template
+      ko.bindingHandlers.template.update(element,
+         function() { return templateValues;},
+         allBindingsAccessor, metaTagsControl, bindingContext);
+
+      return {'controlsDescendantBindings' : true};
+    },
+
+    /**
+     * Update is run whenever an observable in the binding's
+     * properties changes.
+     * Updates the 'metaTags' view model.
+     * @private
+     * @param {object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+      var values = ko.utils.unwrapObservable(valueAccessor());
+
+      // if there are values update the meta tags.
+      if ((viewModel.metaTagsControl) &amp;&amp; (values.property) &amp;&amp; (typeof values.property() !== "undefined")){
+        viewModel.metaTagsControl.updateMetaTags(values.property());
+      }
+    }
+  };
+
+  /**
+   * Binding for loading the generic media picker
+   *
+   * @private
+   * @class mediaPicker allows the selection and upload of media
+   * @example
+   * &amp;lt;div data-bind="mediaPicker: {id: $parent.instance(),value: src}">
+   * &amp;lt;/div>
+   * @see media.template which is the template rendered by this binding
+   */
+  ko.bindingHandlers.mediaPicker = {
+    /**
+     * The logic runs once to initialize the binding for this element.
+     * Creates a MediaPickerControl ViewModel and renders the 'media' template inside this element.
+     * Indicates that this binding controls descendant bindings.
+     * @private
+     * @param {Object} element The DOM element attached to this binding
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+      var values = ko.utils.unwrapObservable(valueAccessor()),
+        templateValues, modalTemplateValues, mediaType,
+        mediaPicker, id, modalContainer;
+
+      id = "";
+
+      if (values.id) {
+        id = ko.utils.unwrapObservable(values.id);
+      }
+
+      // Setup template values which mimic the binding of a template.
+      templateValues = {};
+      templateValues.name = 'media';
+      templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+      // and for the modal template
+      modalTemplateValues = {};
+      modalTemplateValues.name = 'media_modal';
+      modalTemplateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+      // mimic the mediaType view model that widgets/site settings use
+      mediaType = {};
+
+      mediaType.context = $(element).closest('form').attr('id') + '-' + templateValues.name + '-' + (id ? id + '-' : '');
+
+      copyAsObservable(values, mediaType, 'src', "");
+      copyAsObservable(values, mediaType, 'mediaName', "");
+
+      copy(values, mediaType, 'showConfigItem', true);
+      copy(values, mediaType, 'required', false);
+
+      copyAsObservable(values, mediaType, 'label', CCi18n.t('ns.common:resources.mediaText'));
+      copyAsObservable(values, mediaType, 'selectLabel', CCi18n.t('ns.common:resources.selectMediaText'));
+      copyAsObservable(values, mediaType, 'helpText', "");
+      copyAsObservable(values, mediaType, 'requiredMissingMessage', CCi18n.t('ns.common:resources.requiredFieldValidation'));
+
+      mediaType.mediaSelectedCallback = function(pMediaUri, pMediaName) {
+        if (!pMediaUri) {
+          pMediaUri = "";
+        }
+
+        if (!pMediaName) {
+          pMediaName = "";
+        }
+
+        this.src(pMediaUri);
+        this.mediaName(pMediaName);
+      };
+
+      mediaPicker = MediaPickerControl.getInstance(mediaType.context, mediaType.mediaSelectedCallback.bind(mediaType));
+
+      // Set media picker control into view model
+      mediaType.mediaPicker = mediaPicker;
+
+      templateValues.data = mediaType;
+      modalTemplateValues.data = mediaType;
+
+      // Need to add the modal at the page level in case
+      // the media picker is already inside another modal
+      $(CCConstants.ADMIN_CONTENT_CONTAINER).append('&lt;div id="'+mediaType.context+'-modal-container"/>');
+      modalContainer = $('#'+mediaType.context+'-modal-container')[0];
+
+      // Render the modal
+      ko.bindingHandlers.template.update(modalContainer,
+         function() { return modalTemplateValues;},
+         allBindingsAccessor, mediaType, bindingContext);
+
+      // Render the template
+      ko.bindingHandlers.template.update(element,
+         function() { return templateValues;},
+         allBindingsAccessor, mediaType, bindingContext);
+
+      return {'controlsDescendantBindings' : true};
+    },
+
+    /**
+     * Update is run whenever an observable in the binding's
+     * properties changes.
+     * Currently no action necessary.
+     *
+     * @private
+     * @param {object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+    }
+  };
+
+  /**
+   * Binding for loading the generic collection picker
+   *
+   * @private
+   * @class collectionPicker allows the selection of one or more collections
+   * @example
+   * &amp;lt;div data-bind='collectionPicker: { id:$data.id, value: $data.value}'>
+   * &amp;lt;/div>
+   * @see collection.template which is the template rendered by this binding
+   */
+  ko.bindingHandlers.collectionPicker = {
+    /**
+     * The logic runs once to initialize the binding for this element.
+     * Creates a CatalogItemLookupHelper and renders the 'collection' template inside this element.
+     * Indicates that this binding controls descendant bindings.
+     * @private
+     * @param {Object} element The DOM element attached to this binding
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+      var values = ko.utils.unwrapObservable(valueAccessor()),
+        templateValues, collectionType, id;
+
+      id = "";
+
+      if (values.id) {
+        id = ko.utils.unwrapObservable(values.id);
+      }
+
+      // Setup template values which mimic the binding of a template.
+      templateValues = {};
+      templateValues.name = 'collection';
+      templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+      // mimic the collectionType view model that widgets/site settings use
+      collectionType = {};
+
+      collectionType.context = $(element).closest('form').attr('id') + '-' + templateValues.name + '-' + (id ? id + '-' : '');
+
+      copyAsObservable(values, collectionType, 'value', "");
+
+      copy(values, collectionType, 'showConfigItem', true);
+      copy(values, collectionType, 'required', false);
+
+      copyAsObservable(values, collectionType, 'label', CCi18n.t('ns.common:resources.collectionsText'));
+      copyAsObservable(values, collectionType, 'helpText', "");
+
+      // Set collection picker control into view model
+      collectionType.catalogItemLookupHelper = CatalogItemLookupHelper;
+
+      templateValues.data = collectionType;
+
+      // Render the template
+      ko.bindingHandlers.template.update(element,
+         function() { return templateValues; },
+         allBindingsAccessor, collectionType, bindingContext);
+
+      return {'controlsDescendantBindings' : true};
+    },
+
+    /**
+     * Update is run whenever an observable in the binding's
+     * properties changes.
+     * Current;y no action necessary
+     * @private
+     * @param {object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+    }
+  };
+
+  /**
+   * Helper function to copy a property from source object to destination object
+   *
+   * @param source object to copy property from
+   * @param destination object to copy property to
+   * @param property name of the property to copy
+   * @param defaultValue value to use id source does not contain property
+   */
+  var copy = function(source, destination, property, defaultValue) {
+    if (source.hasOwnProperty(property)) {
+        destination[property] = source[property];
+    } else {
+      destination[property] = defaultValue;
+    }
+  };
+
+   /**
+   * Helper function to copy a property, as an observable value, from source object to destination object
+   *
+   * @param source object to copy property from
+   * @param destination object to copy property to
+   * @param property name of the property to copy
+   * @param defaultValue value to use id source does not contain property
+   */
+  var copyAsObservable = function(source, destination, property, defaultValue) {
+    if (source.hasOwnProperty(property)) {
+      if (ko.isObservable(source[property])) {
+        destination[property] = source[property];
+      } else {
+        destination[property] = ko.observable(source[property]);
+      }
+    } else {
+      destination[property] = ko.observable(defaultValue);
+    }
+  };
+
+  /**
+   * Binding for loading the generic media picker
+   *
+   * @private
+   * @class mediaPicker allows the selection and upload of media
+   * @example
+   * &amp;lt;div data-bind="mediaPicker: {id: $parent.instance(),value: src}">
+   * &amp;lt;/div>
+   * @see media.template which is the template rendered by this binding
+   */
+  ko.bindingHandlers.mediaPicker = {
+    /**
+     * The logic runs once to initialize the binding for this element.
+     * Creates a MediaPickerControl ViewModel and renders the 'media' template inside this element.
+     * Indicates that this binding controls descendant bindings.
+     * @private
+     * @param {Object} element The DOM element attached to this binding
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+      var values = ko.utils.unwrapObservable(valueAccessor()),
+        templateValues, modalTemplateValues, mediaType,
+        mediaPicker, id, modalContainer;
+
+      id = "";
+
+      if (values.id) {
+        id = ko.utils.unwrapObservable(values.id);
+      }
+
+      // Setup template values which mimic the binding of a template.
+      templateValues = {};
+      templateValues.name = 'media';
+      templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+      // and for the modal template
+      modalTemplateValues = {};
+      modalTemplateValues.name = 'media_modal';
+      modalTemplateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+      // mimic the mediaType view model that widgets/site settings use
+      mediaType = {};
+
+      mediaType.context = $(element).closest('form').attr('id') + '-' + templateValues.name + '-' + (id ? id + '-' : '');
+
+      copyAsObservable(values, mediaType, 'src', "");
+      copyAsObservable(values, mediaType, 'mediaName', "");
+
+      copy(values, mediaType, 'showConfigItem', true);
+      copy(values, mediaType, 'required', false);
+
+      copyAsObservable(values, mediaType, 'label', CCi18n.t('ns.common:resources.mediaText'));
+      copyAsObservable(values, mediaType, 'selectLabel', CCi18n.t('ns.common:resources.selectMediaText'));
+      copyAsObservable(values, mediaType, 'helpText', "");
+      copyAsObservable(values, mediaType, 'requiredMissingMessage', CCi18n.t('ns.common:resources.requiredFieldValidation'));
+
+      mediaType.mediaSelectedCallback = function(pMediaUri, pMediaName) {
+        if (!pMediaUri) {
+          pMediaUri = "";
+        }
+
+        if (!pMediaName) {
+          pMediaName = "";
+        }
+
+        this.src(pMediaUri);
+        this.mediaName(pMediaName);
+      };
+
+      mediaPicker = MediaPickerControl.getInstance(mediaType.context, mediaType.mediaSelectedCallback.bind(mediaType));
+
+      // Set media picker control into view model
+      mediaType.mediaPicker = mediaPicker;
+
+      templateValues.data = mediaType;
+      modalTemplateValues.data = mediaType;
+
+      // Need to add the modal at the page level in case
+      // the media picker is already inside another modal
+      $(CCConstants.ADMIN_CONTENT_CONTAINER).append('&lt;div id="'+mediaType.context+'-modal-container"/>');
+      modalContainer = $('#'+mediaType.context+'-modal-container')[0];
+
+      // Render the modal
+      ko.bindingHandlers.template.update(modalContainer,
+         function() { return modalTemplateValues;},
+         allBindingsAccessor, mediaType, bindingContext);
+
+      // Render the template
+      ko.bindingHandlers.template.update(element,
+         function() { return templateValues;},
+         allBindingsAccessor, mediaType, bindingContext);
+
+      return {'controlsDescendantBindings' : true};
+    },
+
+    /**
+     * Update is run whenever an observable in the binding's
+     * properties changes.
+     * Currently no action necessary.
+     *
+     * @private
+     * @param {object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+    }
+  };
+
+  /**
+   * Binding for loading the generic collection picker
+   *
+   * @private
+   * @class collectionPicker allows the selection of one or more collections
+   * @example
+   * &amp;lt;div data-bind='collectionPicker: { id:$data.id, value: $data.value}'>
+   * &amp;lt;/div>
+   * @see collection.template which is the template rendered by this binding
+   */
+  ko.bindingHandlers.collectionPicker = {
+    /**
+     * The logic runs once to initialize the binding for this element.
+     * Creates a CatalogItemLookupHelper and renders the 'collection' template inside this element.
+     * Indicates that this binding controls descendant bindings.
+     * @private
+     * @param {Object} element The DOM element attached to this binding
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+      var values = ko.utils.unwrapObservable(valueAccessor()),
+        templateValues, collectionType, id;
+
+      id = "";
+
+      if (values.id) {
+        id = ko.utils.unwrapObservable(values.id);
+      }
+
+      // Setup template values which mimic the binding of a template.
+      templateValues = {};
+      templateValues.name = 'collection';
+      templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_TEMPLATES;
+
+      // mimic the collectionType view model that widgets/site settings use
+      collectionType = {};
+
+      collectionType.context = $(element).closest('form').attr('id') + '-' + templateValues.name + '-' + (id ? id + '-' : '');
+
+      copyAsObservable(values, collectionType, 'value', "");
+
+      copy(values, collectionType, 'showConfigItem', true);
+      copy(values, collectionType, 'required', false);
+
+      copyAsObservable(values, collectionType, 'label', CCi18n.t('ns.common:resources.collectionsText'));
+      copyAsObservable(values, collectionType, 'helpText', "");
+
+      // Set collection picker control into view model
+      collectionType.catalogItemLookupHelper = CatalogItemLookupHelper;
+
+      templateValues.data = collectionType;
+
+      // Render the template
+      ko.bindingHandlers.template.update(element,
+         function() { return templateValues; },
+         allBindingsAccessor, collectionType, bindingContext);
+
+      return {'controlsDescendantBindings' : true};
+    },
+
+    /**
+     * Update is run whenever an observable in the binding's
+     * properties changes.
+     * Current;y no action necessary
+     * @private
+     * @param {object} element The DOM element attached to this binding.
+     * @param {function(): object} valueAccessor A function that returns
+     * all of the values associated with this binding.
+     * @param {function(): object} allBindingsAccessor Object containing
+     * information about other bindings on the same HTML element.
+     * @param {object} viewModel The viewModel that is the current
+     * context for this binding.
+     * @param {object} bindingContext The binding hierarchy for
+     * the current context.
+     */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+    }
+  };
+
+  /**
+   * Helper function to copy a property from source object to destination object
+   *
+   * @param source object to copy property from
+   * @param destination object to copy property to
+   * @param property name of the property to copy
+   * @param defaultValue value to use id source does not contain property
+   */
+  var copy = function(source, destination, property, defaultValue) {
+    if (source.hasOwnProperty(property)) {
+        destination[property] = source[property];
+    } else {
+      destination[property] = defaultValue;
+    }
+  };
+
+   /**
+   * Helper function to copy a property, as an observable value, from source object to destination object
+   *
+   * @param source object to copy property from
+   * @param destination object to copy property to
+   * @param property name of the property to copy
+   * @param defaultValue value to use id source does not contain property
+   */
+  var copyAsObservable = function(source, destination, property, defaultValue) {
+    if (source.hasOwnProperty(property)) {
+      if (ko.isObservable(source[property])) {
+        destination[property] = source[property];
+      } else {
+        destination[property] = ko.observable(source[property]);
+      }
+    } else {
+      destination[property] = ko.observable(defaultValue);
+    }
+  };
+
+  /**
+   * Helper function to retrieve a controls template of a given name.
+   */
+  var addControlTemplate = function(templateName, element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+    var templateValues = {};
+    templateValues.name = templateName;
+    templateValues.templateUrl  = CCConstants.DESIGN_STUDIO_ELEMENT_TEMPLATES;
+
+    //Render the template
+    ko.bindingHandlers.template.update(element,
+       function() { return templateValues;},
+       allBindingsAccessor, viewModel, bindingContext);
+  };
+
+  /**
+   * Used in panel view to render out various configuration panels based on fragment's configOptions.
+   * &lt;p>
+   * The template to be rendered is determined from the configOption.
+   * &lt;p>
+   * &lt;h2>Parameters:&lt;/h2>
+   * &lt;ul>
+   *   &lt;li>&lt;code>{Observable String} value&lt;/code> - The configOption name, and name of the fragment template to be rendered.&lt;/li>
+   * &lt;/ul>
+   *
+   * @private
+   * @class configureFragment renders the configuration panels for a fragment into the element with this binding.
+   * @example
+   * &amp;lt;!-- ko foreach: configOptions -->
+   *    &amp;lt;div data-bind="configureFragment:$data">&amp;lt;/div>
+   * &amp;lt;!-- /ko -->
+   */
+  ko.bindingHandlers.configureFragment = {
+
+    /**
+      Configure 'available' fragment.
+      Render either the 'container' template if the binding context is a fragment itself, or the 'available' template
+      if it's a config option.
+      @private
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+      @param {Object} viewModel The viewModel that is the current context for this binding.
+      @param {Object} bindingContext The binding hierarchy for the current context.
+    */
+    available: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var fragment = bindingContext.$fragment;
+      var type = ko.utils.unwrapObservable(fragment.type);
+
+      // if it's a fragment, we'll be rendering out tabs, otherwise just a single configuration pane
+      if(type === CCConstants.FRAGMENT_TYPE_FRAGMENT) {
+        addControlTemplate(CCConstants.FRAGMENT_TYPE_CONTAINER, element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+      }
+      else {
+        addControlTemplate(CCConstants.FRAGMENT_CONFIG_AVAILABLE, element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+      }
+    },
+    /**
+      Configure 'image' fragment configuration.
+      @private
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+      @param {Object} viewModel The viewModel that is the current context for this binding.
+      @param {Object} bindingContext The binding hierarchy for the current context.
+    */
+    image : function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var currentFraglet = bindingContext.$widgetLayout.currentFraglet();
+
+      if(!currentFraglet) {
+        return;
+      }
+
+      if(!currentFraglet.imageConfig) {
+        currentFraglet.imageConfig = new ImageConfigViewModel();
+      }
+
+      addControlTemplate(CCConstants.FRAGMENT_CONFIG_IMAGE, element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+    },
+    /**
+      Configure 'padding' fragment configuration.
+      @private
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+      @param {Object} viewModel The viewModel that is the current context for this binding.
+      @param {Object} bindingContext The binding hierarchy for the current context.
+    */
+    padding : function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var currentFraglet = bindingContext.$widgetLayout.currentFraglet();
+
+      if(!currentFraglet) {
+        return;
+      }
+
+      if(!currentFraglet.paddingConfig) {
+        currentFraglet.paddingConfig = new PaddingConfigViewModel();
+      }
+
+      addControlTemplate(CCConstants.FRAGMENT_CONFIG_PADDING, element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+    },
+    /**
+      Configure 'richText' fragment configuration.
+      @private
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+      @param {Object} viewModel The viewModel that is the current context for this binding.
+      @param {Object} bindingContext The binding hierarchy for the current context.
+    */
+    richText : function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var currentFraglet = bindingContext.$widgetLayout.currentFraglet();
+
+      if(!currentFraglet) {
+        return;
+      }
+
+      if(!currentFraglet.richTextConfig) {
+        currentFraglet.richTextConfig = new RichTextConfigViewModel();
+      }
+
+      addControlTemplate(CCConstants.FRAGMENT_CONFIG_RICH_TEXT, element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+    },
+    /**
+     Configure 'genericImage' fragment configuration.
+     @private
+     @param {Object} element The DOM element attached to this binding.
+     @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+     @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+     @param {Object} viewModel The viewModel that is the current context for this binding.
+     @param {Object} bindingContext The binding hierarchy for the current context.
+     */
+    genericImage : function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var currentFraglet = bindingContext.$widgetLayout.currentFraglet();
+
+      if (!currentFraglet) {
+        return;
+      }
+
+      // Create view model if required
+      if (!currentFraglet.genericImageConfig) {
+        currentFraglet.genericImageConfig = new GenericImageConfigViewModel();
+      }
+
+      addControlTemplate(CCConstants.FRAGMENT_CONFIG_GENERIC_IMAGE, element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+    },
+    /**
+      Configure 'preview' fragment configuration.
+      @private
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+      @param {Object} viewModel The viewModel that is the current context for this binding.
+      @param {Object} bindingContext The binding hierarchy for the current context.
+    */
+    preview : function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var parent = bindingContext.$parent;
+      var type = ko.utils.unwrapObservable(parent.type);
+
+      var actualChildren = null;
+      var baseFont = null;
+      var sitePageBackgroundColor = null;
+
+      if(type === CCConstants.FRAGMENT_TYPE_CONTAINER) {
+        if(bindingContext.$currentFragmentIndex != null) {
+          actualChildren = bindingContext.$parents[1].actualChildren()[bindingContext.$currentFragmentIndex].actualChildren;
+          baseFont = bindingContext.$parents[1].baseFont;
+          sitePageBackgroundColor =
+            bindingContext.$parents[4].sitePageBackgroundColor;
+        }
+      }
+      else {
+        actualChildren = parent.actualChildren;
+        baseFont = parent.baseFont;
+        sitePageBackgroundColor =
+          bindingContext.$parents[1].sitePageBackgroundColor;
+      }
+
+      if(actualChildren != null) {
+        bindingContext.$previewItems = actualChildren;
+        bindingContext.$baseFont = baseFont;
+        bindingContext.$sitePageBackgroundColor = sitePageBackgroundColor;
+        addControlTemplate(CCConstants.FRAGMENT_CONFIG_PREVIEW, element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+      }
+    },
+    /**
+      Default configuration handler. Called when the configuration option is not one of the specific types above.
+      Renders the template matching 'configOption' into the current element.
+      @private
+      @param {String} configOption The config option name. Corresponds to the template name which will be loaded.
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+      @param {Object} viewModel The viewModel that is the current context for this binding.
+      @param {Object} bindingContext The binding hierarchy for the current context.
+    */
+    defaultHandler : function(configOption, element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      addControlTemplate(configOption, element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+    },
+    /**
+      The logic runs once to initialize the binding for this element.
+      Indicates that it controls descendant bindings.
+      @private
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+    */
+    init: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+      var boundElement = $(element);
+
+      boundElement.on('click', '.cc-fragment', function(evt){
+        $('.cc-fragment', '#cc-subfragment-view').removeClass("selected");
+        evt.stopPropagation(); // Stop click event here to avoid activating both widget and container.
+        $(this).addClass("selected");
+      });
+
+      return {'controlsDescendantBindings' : true};
+    },
+    /**
+      update is run whenever an observable in the binding's properties changes.
+      Updates the appropriate template for the configuration option.
+      @private
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+    */
+    update: function(element, valueAccessor, allBindingsAccessor, viewModel, bindingContext) {
+
+      var value = ko.utils.unwrapObservable(valueAccessor());
+      var fragment = bindingContext.$parent;
+
+      bindingContext.$fragment = fragment;
+      bindingContext.$CCConstants = CCConstants;
+
+      if(ko.bindingHandlers.configureFragment[value]) {
+        ko.bindingHandlers.configureFragment[value](element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+      }
+      else {
+        ko.bindingHandlers.configureFragment[CCConstants.FRAGMENT_CONFIG_DEFAULT_HANDLER](value, element, valueAccessor, allBindingsAccessor, viewModel, bindingContext);
+      }
+    }
+  };
+
+  /**
+   * Used to display a code editor, using the Ace library.
+   * &lt;p>
+   * &lt;a href="http://ace.c9.io">http://ace.c9.io&lt;/a>
+   * &lt;p>
+   * &lt;h2>Parameters:&lt;/h2>
+   * &lt;ul>
+   *   &lt;li>&lt;code>{Observable String} value&lt;/code> - The property which contains the text to be edited.&lt;/li>
+   * &lt;/ul>
+   * &lt;p>
+   * Additional options can be specified through the 'aceOptions' binding.
+   * &lt;p>
+   * &lt;h2>aceOptions Parameters:&lt;/h2>
+   * &lt;ul>
+   *   &lt;li>&lt;code>{String} theme&lt;/code> - The name of one of the Ace themes, e.g. 'clouds','twilight'.&lt;/li>
+   *   &lt;li>&lt;code>{String} codeType&lt;/code> - The code type of the text being edited, as defined in the 'modelist.js'
+   *   file in the 'ext' directory of the Ace editor. E.g. 'css','less','js'.&lt;/li>
+   * &lt;/ul>
+   *
+   * @private
+   * @class ace attaches an ACE Editor to the element to which this is bound.
+   * @example
+   * &amp;lt;div data-bind="ace: codeText, aceOptions : { codeType: 'html', theme: 'github' }"
+   *   id="codeEditor" class="col-md-12 widget-code-editor">&amp;lt;/div>
+   */
+  ko.bindingHandlers.ace = {
+    /**
+      The logic runs once to initialize the binding for this element.
+      Initializes the Ace editor, sets the theme and the text value.
+      @private
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+      @param {Object} viewModel The viewModel that is the current context for this binding.
+      @param {Object} bindingContext The binding hierarchy for the current context.
+    */
+    init: function (element, valueAccessor, allBindingsAccessor, viewModel,
+                    bindingContext) {
+
+      var options = allBindingsAccessor().aceOptions
+        || {codeType: 'html', theme : 'github'};
+      var value = ko.utils.unwrapObservable(valueAccessor());
+
+      var editor = ace.edit(element);
+      editor.setValue(value, -1);
+
+      if ( options.theme ){
+        editor.setTheme('ace/theme/' + options.theme);
+      }
+
+      if ( options.codeType ) {
+        editor.getSession().setMode('ace/mode/' + options.codeType);
+      } else {
+        editor.getSession().setMode('ace/mode/html');
+      }
+
+      if (options.maxLines) {
+        editor.setOptions({maxLines: options.maxLines});
+      } else {
+        editor.setOptions({maxLines: 30});
+      }
+
+      // handle edits made in the editor
+      editor.on('blur', function(delta){
+        if (ko.isWriteableObservable(valueAccessor())) {
+          valueAccessor()(editor.getValue());
+        }
+      });
+
+      $.Topic(PubSub.topicNames.CODE_VIEW_MAXIMIZE).subscribe(function() {
+        this.setOptions({maxLines: 5000});
+        this.getSession().setUseWrapMode(true);
+        this.resize(true);
+      }.bind(editor));
+
+      $.Topic(PubSub.topicNames.CODE_VIEW_MINIMIZE).subscribe(function() {
+        this.setOptions({maxLines: 30});
+        this.getSession().setUseWrapMode(false);
+        this.resize(true);
+      }.bind(editor));
+
+
+      // destroy the editor instance when the element is removed
+      ko.utils.domNodeDisposal.addDisposeCallback(element, function() {
+        editor.destroy();
+        // delete instances_by_id[element.id];
+      });
+    },
+    /**
+      update is run whenever an observable in the binding's properties changes.
+      Updates the Ace editor with the updated text value.
+      @private
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+    */
+    update: function (element, valueAccessor) {
+      var value = ko.utils.unwrapObservable(valueAccessor());
+
+      var editor = ace.edit(element);
+
+      // Check to see if value has been updated outside of editor
+      if (editor.getValue() !== value) {
+        // Value has been updated outside of editor so update editor to match
+        editor.setValue(value, -1);
+      }
+    }
+  };
+
+  /**
+   * Scroll element with this binding into view on focus. Browsers do this by default, but aligned to top,
+   * which causes element not to fully come into view in design page.
+   *
+   * @private
+   * @class Scrolls element into view on focus.
+   * @example
+   * &amp;lt;li class="active">
+   *   &amp;lt;a data-bind="localeText: 'codeTemplateTab', hasFocus: true, scrollToOnFocus : {}" class="codeTab" href="#codeTab" data-toggle="tab">&amp;lt;/a>
+   * &amp;lt;/li>
+   */
+  ko.bindingHandlers.scrollToOnFocus = {
+    /**
+      The logic runs once to initialize the binding for this element.
+      Attaches the handers to scroll the element into view when focussed.
+      @private
+      @param {Object} element The DOM element attached to this binding.
+      @param {function(): object} valueAccessor A function that returns all of the values associated with this binding.
+      @param {function(): object} allBindingsAccessor Object containing information about other bindings on the same HTML element.
+      @param {Object} viewModel The viewModel that is the current context for this binding.
+      @param {Object} bindingContext The binding hierarchy for the current context.
+    */
+    init: function (element, valueAccessor, allBindingsAccessor, viewModel,
+                    bindingContext) {
+
+      $(element).on('focus.cctab', function(evt) {
+        element.scrollIntoView(false);
+      });
+
+      // Stop click firing this focus handler also
+      $(element).on('mousedown.cctab', function(evt) {
+        $(element).off('focus.cctab');
+      });
+
+      $(element).on('mouseup.cctab', function(evt) {
+        $(element).on('focus.cctab', function(evt) {
+          element.scrollIntoView(false);
+        });
+      });
+    }
+  };
+
+
+
+  /**
+   * Prevents font sizes from exceeding min and max bounds.
+   * If the input value is outside the 'min' and the 'max' sizes, the value will be rejected.
+   * &lt;p>
+   * &lt;h2>Properties:&lt;/h2>
+   * &lt;ul>
+   *   &lt;li>&lt;code>{int} minNum&lt;/code> - The minumum font size.&lt;/li>
+   *   &lt;li>&lt;code>{int} maxNum&lt;/code> - The maximum font size.&lt;/li>
+   * &lt;/ul>
+   * @private
+   * @function
+   * @param {Object} target - the target observable.
+   * @param {Object} properties - the extender properties.
+   * @example
+   * ko.observable().extend({fontSizeValidator: { minNum: 2, maxNum: 100} });
+   */
+  ko.extenders.fontSizeValidator = function(target, properties) {
+
+      // create a computed field
+      var result = ko.computed({
+          read: target,
+          write: function(newValue) {
+              var current = target();
+              var valueToWrite = newValue;
+              if(properties) {
+                  if(properties.maxNum &amp;&amp; properties.maxNum &lt; newValue) {
+                      valueToWrite = current;
+                  }
+                  if(properties.minNum &amp;&amp; properties.minNum > newValue) {
+                      valueToWrite = current;
+                  }
+              }
+
+              if(valueToWrite !== current) {
+                  target(valueToWrite);
+              } else {
+                  target.notifySubscribers(valueToWrite);
+              }
+          }
+      });
+
+      result(target());
+      return result;
+  };
+});
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Index</a></h2><h3>Modules</h3><ul><li><a href="module-ccKoErrorWrapper.html">ccKoErrorWrapper</a></li><li><a href="module-ccKoExtensions.html">ccKoExtensions</a></li></ul><h3>Classes</h3><ul><li><a href="Address.html">Address</a></li><li><a href="CartViewModel.html">CartViewModel</a></li><li><a href="DynamicProperty.html">DynamicProperty</a></li><li><a href="EventDispatcher.html">EventDispatcher</a></li><li><a href="GiftCardViewModel.html">GiftCardViewModel</a></li><li><a href="GiftProductListingViewModel.html">GiftProductListingViewModel</a></li><li><a href="ko.bindingHandlers.background.html">background</a></li><li><a href="ko.bindingHandlers.carouselSwipe.html">carouselSwipe</a></li><li><a href="ko.bindingHandlers.ccForm.html">ccForm</a></li><li><a href="ko.bindingHandlers.ccLink.html">ccLink</a></li><li><a href="ko.bindingHandlers.ccValidation.html">ccValidation</a></li><li><a href="ko.bindingHandlers.checkbox.html">checkbox</a></li><li><a href="ko.bindingHandlers.chosen.html">chosen</a></li><li><a href="ko.bindingHandlers.contextResourcesNamespace.html">contextResourcesNamespace</a></li><li><a href="ko.bindingHandlers.currency.html">currency</a></li><li><a href="ko.bindingHandlers.datepicker.html">datepicker</a></li><li><a href="ko.bindingHandlers.datepopover.html">datepopover</a></li><li><a href="ko.bindingHandlers.draggable.html">draggable</a></li><li><a href="ko.bindingHandlers.droppable.html">droppable</a></li><li><a href="ko.bindingHandlers.fade.html">fade</a></li><li><a href="ko.bindingHandlers.hover.html">hover</a></li><li><a href="ko.bindingHandlers.imageSource.html">imageSource</a></li><li><a href="ko.bindingHandlers.imageZoom.html">imageZoom</a></li><li><a href="ko.bindingHandlers.localeText.html">localeText</a></li><li><a href="ko.bindingHandlers.makeAccess.html">makeAccess</a></li><li><a href="ko.bindingHandlers.modal.html">modal</a></li><li><a href="ko.bindingHandlers.modalTabbingContraint.html">modalTabbingContraint</a></li><li><a href="ko.bindingHandlers.onRender.html">onRender</a></li><li><a href="ko.bindingHandlers.popeditor.html">popeditor</a></li><li><a href="ko.bindingHandlers.popover.html">popover</a></li><li><a href="ko.bindingHandlers.productImageSource.html">productImageSource</a></li><li><a href="ko.bindingHandlers.propertyEditor.html">propertyEditor</a></li><li><a href="ko.bindingHandlers.radio.html">radio</a></li><li><a href="ko.bindingHandlers.richTextEditor.html">richTextEditor</a></li><li><a href="ko.bindingHandlers.scrollAffix.html">scrollAffix</a></li><li><a href="ko.bindingHandlers.select2.html">select2</a></li><li><a href="ko.bindingHandlers.select2Tags.html">select2Tags</a></li><li><a href="ko.bindingHandlers.selectable.html">selectable</a></li><li><a href="ko.bindingHandlers.slickList.html">slickList</a></li><li><a href="ko.bindingHandlers.slide.html">slide</a></li><li><a href="ko.bindingHandlers.slider.html">slider</a></li><li><a href="ko.bindingHandlers.spectrum.html">spectrum</a></li><li><a href="ko.bindingHandlers.tagsInput.html">tagsInput</a></li><li><a href="ko.bindingHandlers.textCheck.html">textCheck</a></li><li><a href="ko.bindingHandlers.timepicker.html">timepicker</a></li><li><a href="ko.bindingHandlers.triggerMessage.html">triggerMessage</a></li><li><a href="ko.bindingHandlers.validatableTarget.html">validatableTarget</a></li><li><a href="ko.bindingHandlers.validatableValue.html">validatableValue</a></li><li><a href="ko.bindingHandlers.widgetLocaleText.html">widgetLocaleText</a></li><li><a href="koValidation.alphaNumeric.html">alphaNumeric</a></li><li><a href="koValidation.alphaNumericNoSpaces.html">alphaNumericNoSpaces</a></li><li><a href="koValidation.alphaNumericNoSpacesWithSeperators.html">alphaNumericNoSpacesWithSeperators</a></li><li><a href="koValidation.alphaNumericWithSeperators.html">alphaNumericWithSeperators</a></li><li><a href="koValidation.bool.html">bool</a></li><li><a href="koValidation.creditcard.html">creditcard</a></li><li><a href="koValidation.cvv.html">cvv</a></li><li><a href="koValidation.endmonth.html">endmonth</a></li><li><a href="koValidation.endyear.html">endyear</a></li><li><a href="koValidation.importFileName.html">importFileName</a></li><li><a href="koValidation.laterDate.html">laterDate</a></li><li><a href="koValidation.match.html">match</a></li><li><a href="koValidation.mediaZipFileName.html">mediaZipFileName</a></li><li><a href="koValidation.number.html">number</a></li><li><a href="koValidation.observablePattern.html">observablePattern</a></li><li><a href="koValidation.password.html">password</a></li><li><a href="koValidation.price.html">price</a></li><li><a href="koValidation.propertyIdAlreadyInUse.html">propertyIdAlreadyInUse</a></li><li><a href="koValidation.propertyNameAlreadyInUse.html">propertyNameAlreadyInUse</a></li><li><a href="koValidation.restrictSlashCharacters.html">restrictSlashCharacters</a></li><li><a href="koValidation.startmonth.html">startmonth</a></li><li><a href="koValidation.startyear.html">startyear</a></li><li><a href="koValidation.uniqueTrimmed.html">uniqueTrimmed</a></li><li><a href="koValidation.uniqueTrimmedCaseInsensitive.html">uniqueTrimmedCaseInsensitive</a></li><li><a href="koValidation.url.html">url</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.addTemplate.html">addTemplate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDate.html">ccDate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDateTime.html">ccDateTime</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccNumber.html">ccNumber</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.disabled.html">disabled</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.element.html">element</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.embeddedAssistance.html">embeddedAssistance</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.inTabFlow.html">inTabFlow</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.setContextVariable.html">setContextVariable</a></li><li><a href="NavStateViewModel.html">NavStateViewModel</a></li><li><a href="OrderHistoryViewModel.html">OrderHistoryViewModel</a></li><li><a href="OrderViewModel.html">OrderViewModel</a></li><li><a href="ParentOrganisation.html">ParentOrganisation</a></li><li><a href="ProductListingSearchViewModel.html">ProductListingSearchViewModel</a></li><li><a href="ProductListingViewModel.html">ProductListingViewModel</a></li><li><a href="ProductViewModel.html">ProductViewModel</a></li><li><a href="PubSub.topicNames.html">topicNames</a></li><li><a href="resetCVV.html">resetCVV</a></li><li><a href="resetPaymentDetails.html">resetPaymentDetails</a></li><li><a href="SearchRestClient.html">SearchRestClient</a></li><li><a href="UserViewModel.html">UserViewModel</a></li><li><a href="WidgetViewModel.html">WidgetViewModel</a></li><li><a href="WishlistContentViewModel.html">WishlistContentViewModel</a></li></ul><h3>Namespaces</h3><ul><li><a href="ko.bindingHandlers.html">bindingHandlers</a></li><li><a href="ko.extenders.html">extenders</a></li><li><a href="koValidation.html">koValidation</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CCEETagProcessor">CCEETagProcessor</a></li><li><a href="global.html#isValidDeterminewhetherornotthepaymentdetailsobjectisvalidbasedonthevalidityofitscomponentparts.Thiswillnotcauseerrormessagestobedisplayedforanyobservablevaluesthatareunchangedandhaveneverreceivedfocusontherelatedformfield(s).">isValid
+Determine whether or not the payment details object is valid
+based on the validity of its component parts. This will not
+cause error messages to be displayed for any observable values
+that are unchanged and have never received focus on the 
+related form field(s).</a></li><li><a href="global.html#validatePaymentDetailsForceallrelevantmemberobservablestoperformtheirvalidationnow&displaytheerrors(ifany)">validatePaymentDetails
+Force all relevant member observables to perform their
+validation now & display the errors (if any)</a></li></ul>
+</nav>
+
+<br clear="both">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0</a> on Mon Oct 10 2016 10:49:03 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

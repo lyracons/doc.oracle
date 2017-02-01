@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: Dynamo/Client/Store/web/store.war/shared/js/ccLibs/sf-exception-handler.js</title>
+    
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    
+    <h1 class="page-title">Source: Dynamo/Client/Store/web/store.war/shared/js/ccLibs/sf-exception-handler.js</h1>
+    
+    
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source"><code>/**
+ * @fileoverview Handles exceptions on the client side
+ *
+ */
+/*global $ */
+
+define(
+  //-------------------------------------------------------------------
+  // PACKAGE NAME
+  //-------------------------------------------------------------------
+  'sfExceptionHandler',
+  //-------------------------------------------------------------------
+  // DEPENDENCIES
+  //-------------------------------------------------------------------
+  ['knockout',
+   'ccRestClient', 
+   'ccConstants',
+   'ccClientErrorCodes',
+   'pubsub',
+   'storageApi',
+   'pageViewTracker'
+  ],
+    
+  function(ko, ccRestClient, CCConstants, CCClientErrorCodes, PubSub, storageApi, pageViewTracker) {
+    "use strict";
+    var self, errors = [], exceptionDebug = "",
+    errorMessage = "", errorLine = "",
+    errorUrl = "", errorCount= 0,
+    maxErrors = 10, trackError,
+    errorCode, clientErrorCode, endPointUrl,
+    inputData ={}, exceptionProperty, uniqueErrorArray = [],
+    uniqueErrorKey="";
+       
+    function ExceptionHandler(){
+    }
+  
+    /**
+     * Subscribes to the exception handler topics for try/catch and 
+     * window.onerror functions
+     */
+    ExceptionHandler.prototype.subscribe = function() {
+      self = this;
+      self.logWindowOnErrorBinding = self.logWindowOnError.bind(self);
+      self.logExceptionErrorBinding = self.logExceptionError.bind(self);     
+      $.Topic(PubSub.topicNames.EXCEPTION_HANDLER)
+      .subscribe(self.logExceptionErrorBinding);
+      $.Topic(PubSub.topicNames.ONERROR_EXCEPTION_HANDLER)
+      .subscribe(self.logWindowOnErrorBinding);
+    };
+    
+    /**
+     * Returns error codes based on the exception type
+      */
+    ExceptionHandler.prototype.getErrorCode = function(exception){
+      if(exception){
+        exception = exception.toLowerCase();
+        if(exception === 'RangeError'.toLowerCase() || 
+        exception === 'RangeError:'.toLowerCase()){
+          errorCode =  CCClientErrorCodes.RANGE_ERROR;
+        }else if(exception === 'TypeError'.toLowerCase() ||
+         exception === 'TypeError:'.toLowerCase()){
+          errorCode =  CCClientErrorCodes.TYPE_ERROR;
+        }else if(exception === 'SyntaxError'.toLowerCase() ||
+         exception === 'SyntaxError:'.toLowerCase()){
+          errorCode =  CCClientErrorCodes.SYNTAX_ERROR;
+        }else if(exception === 'ReferenceError'.toLowerCase() ||
+         exception === 'ReferenceError:'.toLowerCase()){
+          errorCode =  CCClientErrorCodes.REFERENCE_ERROR;
+        }else if(exception === 'EvalError'.toLowerCase() ||
+         exception === 'EvalError:'.toLowerCase()){
+          errorCode =  CCClientErrorCodes.EVAL_ERROR;
+        }else if(exception === 'URIError'.toLowerCase() ||
+         exception === 'URIError:'.toLowerCase()){
+          errorCode =  CCClientErrorCodes.URI_ERROR;
+        }else{
+          errorCode =  CCClientErrorCodes.GENERIC_ERROR;
+        }
+      }else{
+        errorCode = CCClientErrorCodes.NO_SPECIFIED_ERROR;
+      }
+      return errorCode;    
+    };
+    
+    /**
+     * This function gets called if exception is published from a catch block
+     * on topic PubSub.topicNames.EXCEPTION_HANDLER
+     */
+     ExceptionHandler.prototype.logExceptionError = function(exception) {
+      self = this;
+      self.errorCode = self.getErrorCode(exception.name);      
+      self.errorUrl = location.href;
+      self.errorLine= "";
+      self.errorMessage = "";     
+      var exceptionProperty;
+      
+      for (exceptionProperty in exception) {  
+        if(exceptionProperty === "fileName"){
+          self.errorUrl = exception[exceptionProperty];
+        }else if(exceptionProperty === "lineNumber"){
+          self.errorLine = exception[exceptionProperty];
+        }      
+      } 
+      self.errorMessage = exception.toString();
+      if(!self.errorLine &amp;&amp; exception.line > 0){
+        self.errorLine = exception.line;
+      }
+      self.sendErrorReport(self.errorMessage, self.errorLine, self.errorUrl,
+         self.errorCode);
+    };
+    
+    /**
+     * This function gets called if exception is published from window.onerror
+     *  method on topic ONERROR_EXCEPTION_HANDLER
+     */
+  
+    ExceptionHandler.prototype.logWindowOnError = function(errorMessage, 
+      errorUrl, errorLine) {
+      self= this;
+      var errorMessageWordsArray = errorMessage.split(" "),
+       errorName, index, len;
+      for( index = 0, len = errorMessageWordsArray.length; index &lt; len; 
+        index+=1 ) {  
+        if(errorMessageWordsArray[index].indexOf("Error") >= 0){
+           errorName = errorMessageWordsArray[index];
+           break;
+        }   
+      }
+      
+      self.errorCode = self.getErrorCode(errorName);
+      if(!self.errorCode){
+        self.errorCode = " ";
+      }
+      if(!errorMessage){
+        self.errorMessage = " ";
+      }else{
+        self.errorMessage = errorMessage;
+      }
+      if(!errorUrl){
+        self.errorUrl = " ";
+      }else{
+        self.errorUrl = errorUrl;
+      }
+      if(!errorLine){
+        self.errorLine = " ";
+      }else{
+        self.errorLine = errorLine;
+      }
+      self.sendErrorReport(self.errorMessage, self.errorLine, self.errorUrl, self.errorCode);
+    };
+    /**
+     * Returns an array with browser name - M[0] and version M[1]
+     */
+    navigator.findBrowserVersion= (function(){
+      var N= navigator.appName, ua= navigator.userAgent, tem, M;
+      M= ua.match(/(opera|chrome|safari|firefox|msie)\/?\s*(\.?\d+(\.\d+)*)/i);
+      if(M &amp;&amp; (tem= ua.match(/version\/([\.\d]+)/i))!== null){ 
+        M[2]= tem[1];
+      }
+      M= M? [M[1], M[2]]: [N, navigator.appVersion, '-?'];    
+      return M;
+      })();
+      
+    /**
+     * Creates an error object to send to the server for logging purpose
+     * Check for maxErrors ensures infinite loop doesn't occur
+     * @param {Object} errorMessage
+     * @param {Object} errorLine
+     * @param {Object} errorUrl
+     * @param {Object} errorCode
+     */
+    ExceptionHandler.prototype.sendErrorReport = function(errorMessage,
+       errorLine, errorUrl, errorCode){
+      // Get the visitor and visit id
+      var localVisitorId = pageViewTracker.getVisitorId();
+      var localVisitId = pageViewTracker.getVisitId()
+      if (typeof errorMessage !== "undefined" &amp;&amp; errorCount &lt; maxErrors) {
+        errorCount+=1;
+        trackError = {
+          message: errorMessage,
+          url: errorUrl,
+          line: errorLine,
+          osVersion: window.navigator.platform,
+          locale : window.navigator.language,
+          browserVersion : navigator.findBrowserVersion[0] + 
+          " "+navigator.findBrowserVersion[1] ,
+          time: (new Date()).toISOString(),
+          clientErrorCode: errorCode,
+          visitorId: localVisitorId,
+          visitId: localVisitId
+        };
+        //To avoid sending duplicate errors to the server
+        uniqueErrorKey = errorCode+"#"+errorUrl+"#"+errorLine;
+        if(uniqueErrorArray.indexOf(uniqueErrorKey) &lt; 0){
+          uniqueErrorArray.push(uniqueErrorKey);
+          errors.push(trackError);
+          this.reportErrorsToServer();
+        }
+        
+      }
+    };
+    /**
+     * Sends error object to the server for logging purpose.
+     * Resets error count and error array
+     */
+    ExceptionHandler.prototype.reportErrorsToServer = function() {
+      if(errors.length > 0) {
+        endPointUrl=CCConstants.ENDPOINT_ERRORLOGS_CREATE_ERRORLOG;
+        inputData ={};
+        inputData = {clientSideErrors : errors };
+        ccRestClient.request(endPointUrl, inputData, this.sendSuccess, 
+          this.sendError);
+        errors = [];
+        errorCount = 0;
+      }
+    }; 
+    
+    /**
+     * Gets called when sending error to the server is successful
+    * @param {Object} param
+     */
+    ExceptionHandler.prototype.sendSuccess = function(param) {
+    };
+    /**
+     * Gets called when sending error to the server is unsuccessful
+    * @param {Object} param
+     */
+    ExceptionHandler.prototype.sendError = function(param) {
+    };
+    
+    return ExceptionHandler;
+ });</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Index</a></h2><h3>Modules</h3><ul><li><a href="module-ccKoErrorWrapper.html">ccKoErrorWrapper</a></li><li><a href="module-ccKoExtensions.html">ccKoExtensions</a></li></ul><h3>Classes</h3><ul><li><a href="Address.html">Address</a></li><li><a href="CartViewModel.html">CartViewModel</a></li><li><a href="DynamicProperty.html">DynamicProperty</a></li><li><a href="EventDispatcher.html">EventDispatcher</a></li><li><a href="GiftCardViewModel.html">GiftCardViewModel</a></li><li><a href="GiftProductListingViewModel.html">GiftProductListingViewModel</a></li><li><a href="ko.bindingHandlers.background.html">background</a></li><li><a href="ko.bindingHandlers.carouselSwipe.html">carouselSwipe</a></li><li><a href="ko.bindingHandlers.ccForm.html">ccForm</a></li><li><a href="ko.bindingHandlers.ccLink.html">ccLink</a></li><li><a href="ko.bindingHandlers.ccValidation.html">ccValidation</a></li><li><a href="ko.bindingHandlers.checkbox.html">checkbox</a></li><li><a href="ko.bindingHandlers.chosen.html">chosen</a></li><li><a href="ko.bindingHandlers.contextResourcesNamespace.html">contextResourcesNamespace</a></li><li><a href="ko.bindingHandlers.currency.html">currency</a></li><li><a href="ko.bindingHandlers.datepicker.html">datepicker</a></li><li><a href="ko.bindingHandlers.datepopover.html">datepopover</a></li><li><a href="ko.bindingHandlers.draggable.html">draggable</a></li><li><a href="ko.bindingHandlers.droppable.html">droppable</a></li><li><a href="ko.bindingHandlers.fade.html">fade</a></li><li><a href="ko.bindingHandlers.hover.html">hover</a></li><li><a href="ko.bindingHandlers.imageSource.html">imageSource</a></li><li><a href="ko.bindingHandlers.imageZoom.html">imageZoom</a></li><li><a href="ko.bindingHandlers.localeText.html">localeText</a></li><li><a href="ko.bindingHandlers.makeAccess.html">makeAccess</a></li><li><a href="ko.bindingHandlers.modal.html">modal</a></li><li><a href="ko.bindingHandlers.modalTabbingContraint.html">modalTabbingContraint</a></li><li><a href="ko.bindingHandlers.onRender.html">onRender</a></li><li><a href="ko.bindingHandlers.popeditor.html">popeditor</a></li><li><a href="ko.bindingHandlers.popover.html">popover</a></li><li><a href="ko.bindingHandlers.productImageSource.html">productImageSource</a></li><li><a href="ko.bindingHandlers.propertyEditor.html">propertyEditor</a></li><li><a href="ko.bindingHandlers.radio.html">radio</a></li><li><a href="ko.bindingHandlers.richTextEditor.html">richTextEditor</a></li><li><a href="ko.bindingHandlers.scrollAffix.html">scrollAffix</a></li><li><a href="ko.bindingHandlers.select2.html">select2</a></li><li><a href="ko.bindingHandlers.select2Tags.html">select2Tags</a></li><li><a href="ko.bindingHandlers.selectable.html">selectable</a></li><li><a href="ko.bindingHandlers.slickList.html">slickList</a></li><li><a href="ko.bindingHandlers.slide.html">slide</a></li><li><a href="ko.bindingHandlers.slider.html">slider</a></li><li><a href="ko.bindingHandlers.spectrum.html">spectrum</a></li><li><a href="ko.bindingHandlers.tagsInput.html">tagsInput</a></li><li><a href="ko.bindingHandlers.textCheck.html">textCheck</a></li><li><a href="ko.bindingHandlers.timepicker.html">timepicker</a></li><li><a href="ko.bindingHandlers.triggerMessage.html">triggerMessage</a></li><li><a href="ko.bindingHandlers.validatableTarget.html">validatableTarget</a></li><li><a href="ko.bindingHandlers.validatableValue.html">validatableValue</a></li><li><a href="ko.bindingHandlers.widgetLocaleText.html">widgetLocaleText</a></li><li><a href="koValidation.alphaNumeric.html">alphaNumeric</a></li><li><a href="koValidation.alphaNumericNoSpaces.html">alphaNumericNoSpaces</a></li><li><a href="koValidation.alphaNumericNoSpacesWithSeperators.html">alphaNumericNoSpacesWithSeperators</a></li><li><a href="koValidation.alphaNumericWithSeperators.html">alphaNumericWithSeperators</a></li><li><a href="koValidation.bool.html">bool</a></li><li><a href="koValidation.creditcard.html">creditcard</a></li><li><a href="koValidation.cvv.html">cvv</a></li><li><a href="koValidation.endmonth.html">endmonth</a></li><li><a href="koValidation.endyear.html">endyear</a></li><li><a href="koValidation.importFileName.html">importFileName</a></li><li><a href="koValidation.laterDate.html">laterDate</a></li><li><a href="koValidation.match.html">match</a></li><li><a href="koValidation.mediaZipFileName.html">mediaZipFileName</a></li><li><a href="koValidation.number.html">number</a></li><li><a href="koValidation.observablePattern.html">observablePattern</a></li><li><a href="koValidation.password.html">password</a></li><li><a href="koValidation.price.html">price</a></li><li><a href="koValidation.propertyIdAlreadyInUse.html">propertyIdAlreadyInUse</a></li><li><a href="koValidation.propertyNameAlreadyInUse.html">propertyNameAlreadyInUse</a></li><li><a href="koValidation.restrictSlashCharacters.html">restrictSlashCharacters</a></li><li><a href="koValidation.startmonth.html">startmonth</a></li><li><a href="koValidation.startyear.html">startyear</a></li><li><a href="koValidation.uniqueTrimmed.html">uniqueTrimmed</a></li><li><a href="koValidation.uniqueTrimmedCaseInsensitive.html">uniqueTrimmedCaseInsensitive</a></li><li><a href="koValidation.url.html">url</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.addTemplate.html">addTemplate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDate.html">ccDate</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccDateTime.html">ccDateTime</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.ccNumber.html">ccNumber</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.disabled.html">disabled</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.element.html">element</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.embeddedAssistance.html">embeddedAssistance</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.inTabFlow.html">inTabFlow</a></li><li><a href="module-ccKoExtensions-ko.bindingHandlers.setContextVariable.html">setContextVariable</a></li><li><a href="NavStateViewModel.html">NavStateViewModel</a></li><li><a href="OrderHistoryViewModel.html">OrderHistoryViewModel</a></li><li><a href="OrderViewModel.html">OrderViewModel</a></li><li><a href="ParentOrganisation.html">ParentOrganisation</a></li><li><a href="ProductListingSearchViewModel.html">ProductListingSearchViewModel</a></li><li><a href="ProductListingViewModel.html">ProductListingViewModel</a></li><li><a href="ProductViewModel.html">ProductViewModel</a></li><li><a href="PubSub.topicNames.html">topicNames</a></li><li><a href="resetCVV.html">resetCVV</a></li><li><a href="resetPaymentDetails.html">resetPaymentDetails</a></li><li><a href="SearchRestClient.html">SearchRestClient</a></li><li><a href="UserViewModel.html">UserViewModel</a></li><li><a href="WidgetViewModel.html">WidgetViewModel</a></li><li><a href="WishlistContentViewModel.html">WishlistContentViewModel</a></li></ul><h3>Namespaces</h3><ul><li><a href="ko.bindingHandlers.html">bindingHandlers</a></li><li><a href="ko.extenders.html">extenders</a></li><li><a href="koValidation.html">koValidation</a></li></ul><h3>Global</h3><ul><li><a href="global.html#CCEETagProcessor">CCEETagProcessor</a></li><li><a href="global.html#isValidDeterminewhetherornotthepaymentdetailsobjectisvalidbasedonthevalidityofitscomponentparts.Thiswillnotcauseerrormessagestobedisplayedforanyobservablevaluesthatareunchangedandhaveneverreceivedfocusontherelatedformfield(s).">isValid
+Determine whether or not the payment details object is valid
+based on the validity of its component parts. This will not
+cause error messages to be displayed for any observable values
+that are unchanged and have never received focus on the 
+related form field(s).</a></li><li><a href="global.html#validatePaymentDetailsForceallrelevantmemberobservablestoperformtheirvalidationnow&displaytheerrors(ifany)">validatePaymentDetails
+Force all relevant member observables to perform their
+validation now & display the errors (if any)</a></li></ul>
+</nav>
+
+<br clear="both">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0</a> on Mon Oct 10 2016 10:49:02 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
